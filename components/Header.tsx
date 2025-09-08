@@ -1,12 +1,25 @@
-
 import React from 'react';
+import MenuIcon from './icons/MenuIcon';
 
-const Header: React.FC = () => {
+interface HeaderProps {
+    onMenuClick: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
     return (
         <header className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
-            <h1 className="text-2xl font-bold text-gray-800">Panel de Control - Teysa</h1>
+            <div className="flex items-center">
+                <button 
+                    onClick={onMenuClick} 
+                    className="text-gray-500 hover:text-gray-800 focus:outline-none md:hidden mr-2"
+                    aria-label="Abrir menú"
+                >
+                    <MenuIcon className="h-6 w-6" />
+                </button>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-800">Panel de Control - Teysa</h1>
+            </div>
             <div className="flex items-center space-x-4">
-                <div className="text-right">
+                <div className="text-right hidden sm:block">
                     <p className="font-semibold text-gray-700">Modo Administrador</p>
                     <p className="text-sm text-gray-500">Acceso Total</p>
                 </div>
