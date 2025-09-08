@@ -7,9 +7,11 @@ import InventoryView from './components/views/InventoryView';
 import MachinesView from './components/views/MachinesView';
 import ReportsView from './components/views/ReportsView';
 import WorkersView from './components/views/WorkersView';
+import LoginView from './components/views/LoginView';
 import type { View } from './types';
 
 const App: React.FC = () => {
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [activeView, setActiveView] = useState<View>('dashboard');
 
     const renderView = () => {
@@ -30,6 +32,10 @@ const App: React.FC = () => {
                 return <DashboardView />;
         }
     };
+
+    if (!isAuthenticated) {
+        return <LoginView onLoginSuccess={() => setIsAuthenticated(true)} />;
+    }
 
     return (
         <div className="flex h-screen bg-gray-100 font-sans">
