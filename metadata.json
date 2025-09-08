@@ -1,0 +1,5 @@
+{
+  "name": "Sistema de Control de Producción",
+  "description": "Una aplicación web para gestionar y supervisar las líneas de producción en una fábrica. Permite el seguimiento de tareas, objetivos de producción, inventario, control de calidad y más, todo en español.",
+  "requestFramePermissions": []
+}

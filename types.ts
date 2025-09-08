@@ -1,0 +1,63 @@
+export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers';
+
+export enum TaskStatus {
+  Pendiente = 'Pendiente',
+  EnProceso = 'En Proceso',
+  Terminado = 'Terminado',
+  Bloqueado = 'Bloqueado'
+}
+
+export enum MachineStatus {
+    Disponible = 'Disponible',
+    Mantenimiento = 'Mantenimiento',
+    Inactivo = 'Inactivo'
+}
+
+export interface Worker {
+    id: number;
+    name: string;
+    shift: 'Mañana' | 'Tarde' | 'Noche' | 'Todo el día' | 'Por hora';
+}
+
+export interface Task {
+    id: number;
+    title: string;
+    workerIds: number[];
+    estimatedTime: number; // in hours
+    startTime?: Date;
+    endTime?: Date;
+    status: TaskStatus;
+    orderId: string;
+}
+
+export interface ProductionGoal {
+    id: number;
+    productName: string;
+    target: number;
+    current: number;
+    deadline: string;
+}
+
+export interface InventoryItem {
+    id: number;
+    name: string;
+    type: 'Materia Prima' | 'Producto Terminado';
+    quantity: number;
+    low_stock_threshold: number;
+    unit: string;
+}
+
+export interface Machine {
+    id: number;
+    name: string;
+    status: MachineStatus;
+    lastMaintenance: Date;
+}
+
+export interface TaskComment {
+  id: number;
+  task_id: number;
+  author_id: number | null;
+  comment: string;
+  created_at: string; // ISO string
+}
