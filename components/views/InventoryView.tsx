@@ -12,32 +12,73 @@ const InventoryItemForm: React.FC<{
     const [formData, setFormData] = useState({
         name: item?.name || '',
         type: item?.type || 'Materia Prima',
-        quantity: item?.quantity || 0,
-        low_stock_threshold: item?.low_stock_threshold || 0,
-        unit: item?.unit || 'unidades',
+        quantity: item?.quantity?.toString() ?? '',
+        low_stock_threshold: item?.low_stock_threshold?.toString() ?? '',
     });
+
+    const standardUnits = ['unidades', 'kg', 'metros'];
+
+    const getInitialUnitState = () => {
+        if (!item?.unit) return { selection: 'unidades', custom: '' };
+        if (standardUnits.includes(item.unit)) {
+            return { selection: item.unit, custom: '' };
+        }
+        return { selection: 'Otro', custom: item.unit };
+    };
+    
+    const [unitState, setUnitState] = useState(getInitialUnitState());
+    
+    useEffect(() => {
+        setFormData({
+            name: item?.name || '',
+            type: item?.type || 'Materia Prima',
+            quantity: item?.quantity?.toString() ?? '',
+            low_stock_threshold: item?.low_stock_threshold?.toString() ?? '',
+        });
+        setUnitState(getInitialUnitState());
+    }, [item]);
+
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
-            [name]: name === 'quantity' || name === 'low_stock_threshold' ? parseInt(value, 10) || 0 : value,
+            [name]: value,
         }));
+    };
+
+    const handleUnitSelectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        setUnitState({ ...unitState, selection: e.target.value });
+    };
+    
+    const handleCustomUnitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setUnitState({ ...unitState, custom: e.target.value });
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.name.trim() || !formData.unit.trim()) {
+        
+        const finalUnit = unitState.selection === 'Otro' ? unitState.custom : unitState.selection;
+
+        if (!formData.name.trim() || !finalUnit.trim()) {
             alert('El nombre y la unidad son obligatorios.');
             return;
         }
-        onSave(isEdit ? { ...item, ...formData } : formData);
+
+        const itemData = {
+            ...formData,
+            quantity: Number(formData.quantity) || 0,
+            low_stock_threshold: Number(formData.low_stock_threshold) || 0,
+            unit: finalUnit
+        };
+        
+        onSave(isEdit ? { ...item, ...itemData } : itemData);
     };
 
     return (
         <Card title={isEdit ? `Editando: ${item?.name}` : 'Añadir Nuevo Artículo'} className="mb-6">
             <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
                     <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nombre</label>
                         <input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
@@ -51,15 +92,38 @@ const InventoryItemForm: React.FC<{
                     </div>
                     <div>
                         <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">Cantidad</label>
-                        <input type="number" name="quantity" id="quantity" value={formData.quantity} onChange={handleChange} required min="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                        <input type="number" name="quantity" id="quantity" value={formData.quantity} onChange={handleChange} placeholder="0" min="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
                     </div>
                     <div>
                         <label htmlFor="low_stock_threshold" className="block text-sm font-medium text-gray-700">Umbral Stock Bajo</label>
-                        <input type="number" name="low_stock_threshold" id="low_stock_threshold" value={formData.low_stock_threshold} onChange={handleChange} required min="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                        <input type="number" name="low_stock_threshold" id="low_stock_threshold" value={formData.low_stock_threshold} onChange={handleChange} placeholder="0" min="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
                     </div>
-                    <div>
-                        <label htmlFor="unit" className="block text-sm font-medium text-gray-700">Unidad</label>
-                        <input type="text" name="unit" id="unit" value={formData.unit} onChange={handleChange} required placeholder="kg, metros, unidades..." className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                    <div className="md:col-span-2 lg:col-span-1">
+                        <div className="grid grid-cols-2 gap-2 items-end">
+                             <div className={unitState.selection === 'Otro' ? 'col-span-1' : 'col-span-2'}>
+                                <label htmlFor="unit" className="block text-sm font-medium text-gray-700">Unidad</label>
+                                <select id="unit" value={unitState.selection} onChange={handleUnitSelectionChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                    <option value="unidades">Unidades</option>
+                                    <option value="kg">Kilogramos (kg)</option>
+                                    <option value="metros">Metros (m)</option>
+                                    <option value="Otro">Otro...</option>
+                                </select>
+                            </div>
+                            {unitState.selection === 'Otro' && (
+                                <div className="col-span-1">
+                                    <label htmlFor="customUnit" className="block text-sm font-medium text-gray-700 sr-only">Unidad Personalizada</label>
+                                    <input
+                                        type="text"
+                                        id="customUnit"
+                                        value={unitState.custom}
+                                        onChange={handleCustomUnitChange}
+                                        required={unitState.selection === 'Otro'}
+                                        placeholder="Ej: litros"
+                                        className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                                    />
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
                 <div className="flex justify-end space-x-2 pt-2">
