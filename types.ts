@@ -1,4 +1,4 @@
-export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers';
+export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders';
 
 export enum TaskStatus {
   Pendiente = 'Pendiente',
@@ -60,4 +60,27 @@ export interface TaskComment {
   author_id: number | null;
   comment: string;
   created_at: string; // ISO string
+}
+
+export interface Product {
+  id: number;
+  name: string;
+  finished_product_inventory_id: number;
+  created_at: string;
+}
+
+export interface ProductRecipe {
+  id: number;
+  product_id: number;
+  raw_material_inventory_id: number;
+  quantity_required: number;
+}
+
+export interface ProductionOrder {
+  id: number;
+  product_id: number;
+  quantity_to_produce: number;
+  status: 'Pendiente' | 'En Proceso' | 'Completado';
+  created_at: string;
+  completed_at?: string;
 }

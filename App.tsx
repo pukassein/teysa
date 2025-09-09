@@ -8,6 +8,7 @@ import MachinesView from './components/views/MachinesView';
 import ReportsView from './components/views/ReportsView';
 import WorkersView from './components/views/WorkersView';
 import LoginView from './components/views/LoginView';
+import ProductionOrdersView from './components/views/ProductionOrdersView';
 import type { View } from './types';
 
 const App: React.FC = () => {
@@ -29,6 +30,8 @@ const App: React.FC = () => {
                 return <ReportsView />;
             case 'workers':
                 return <WorkersView />;
+            case 'productionOrders':
+                return <ProductionOrdersView />;
             default:
                 return <DashboardView />;
         }

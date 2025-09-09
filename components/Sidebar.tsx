@@ -6,6 +6,7 @@ import InventoryIcon from './icons/InventoryIcon';
 import MachineIcon from './icons/MachineIcon';
 import ReportsIcon from './icons/ReportsIcon';
 import UsersIcon from './icons/UsersIcon';
+import ProductionIcon from './icons/ProductionIcon';
 
 interface SidebarProps {
     activeView: View;
@@ -36,6 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, isOpen, se
     const navItems: { view: View; label: string; icon: React.ReactNode }[] = [
         { view: 'dashboard', label: 'Dashboard', icon: <DashboardIcon className="h-6 w-6" /> },
         { view: 'tasks', label: 'Gestión de Tareas', icon: <TasksIcon className="h-6 w-6" /> },
+        { view: 'productionOrders', label: 'Órdenes de Producción', icon: <ProductionIcon className="h-6 w-6" /> },
         { view: 'workers', label: 'Funcionarios', icon: <UsersIcon className="h-6 w-6" /> },
         { view: 'inventory', label: 'Inventario', icon: <InventoryIcon className="h-6 w-6" /> },
         { view: 'machines', label: 'Máquinas', icon: <MachineIcon className="h-6 w-6" /> },
