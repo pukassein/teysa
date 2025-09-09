@@ -148,20 +148,18 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
             )}
             <div className="border-t my-4"></div>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                <div className="flex items-center">
+                <div className="flex items-center flex-wrap gap-2">
                     {assignedWorkers.length > 0 ? (
-                        <div className="flex -space-x-3 items-center">
-                            {assignedWorkers.slice(0, 3).map(worker => (
-                                <div key={worker.id} className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-500 ring-2 ring-white" title={worker.name}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        assignedWorkers.map(worker => (
+                            <div key={worker.id} className="flex items-center bg-gray-100 rounded-full py-1 pl-1 pr-3 text-sm">
+                                <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-500 ring-2 ring-white flex-shrink-0">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                     </svg>
                                 </div>
-                            ))}
-                            {assignedWorkers.length > 3 && (
-                                <span className="pl-4 text-sm font-medium text-gray-500">+{assignedWorkers.length - 3} más</span>
-                            )}
-                        </div>
+                                <span className="ml-2 font-medium text-gray-700">{worker.name}</span>
+                            </div>
+                        ))
                     ) : <p className="text-sm text-gray-500">No asignado</p>}
                 </div>
                 <div className="flex items-center space-x-4 mt-4 sm:mt-0">
