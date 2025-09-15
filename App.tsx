@@ -10,6 +10,7 @@ import WorkersView from './components/views/WorkersView';
 import LoginView from './components/views/LoginView';
 import ProductionOrdersView from './components/views/ProductionOrdersView';
 import type { View } from './types';
+import FeedbackButton from './components/FeedbackButton';
 
 const App: React.FC = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -55,6 +56,7 @@ const App: React.FC = () => {
                     {renderView()}
                 </main>
             </div>
+            <FeedbackButton />
         </div>
     );
 };
