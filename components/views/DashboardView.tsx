@@ -7,6 +7,7 @@ import Badge from '../ui/Badge';
 import { supabase } from '../../supabaseClient';
 import ChatBubbleIcon from '../icons/ChatBubbleIcon';
 import TaskCommentsModal from './TaskCommentsModal';
+import ArchiveIcon from '../icons/ArchiveIcon';
 
 const getStatusColor = (status: TaskStatus) => {
     switch (status) {
@@ -23,9 +24,10 @@ interface TaskCardProps {
     workers: Worker[];
     commentCount: number;
     onOpenComments: () => void;
+    onArchive?: (taskId: number) => void;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, workers, commentCount, onOpenComments }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, workers, commentCount, onOpenComments, onArchive }) => {
     const assignedWorkers = workers.filter(w => task.workerIds?.includes(w.id));
     return (
         <div className="bg-white p-3 rounded-lg shadow mb-3 border-l-4 border-blue-500">
@@ -38,6 +40,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, workers, commentCount, onOpen
                         <ChatBubbleIcon className="w-4 h-4" />
                         <span>{commentCount}</span>
                     </button>
+                    {onArchive && (
+                         <button onClick={() => onArchive(task.id)} className="text-gray-400 hover:text-blue-600 transition-colors" title="Archivar tarea">
+                            <ArchiveIcon className="w-4 h-4" />
+                        </button>
+                    )}
                     <div className="flex -space-x-2 overflow-hidden">
                         {assignedWorkers.map(worker => (
                              <div key={worker.id} className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-500 ring-2 ring-white" title={worker.name}>
@@ -53,13 +60,22 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, workers, commentCount, onOpen
     );
 };
 
-const KanbanColumn: React.FC<{ title: string; tasks: Task[]; workers: Worker[]; comments: TaskComment[]; onTaskSelect: (task: Task) => void; }> = ({ title, tasks, workers, comments, onTaskSelect }) => (
+const KanbanColumn: React.FC<{ 
+    title: string; 
+    tasks: Task[]; 
+    workers: Worker[]; 
+    comments: TaskComment[]; 
+    onTaskSelect: (task: Task) => void;
+    onArchiveTask?: (taskId: number) => void;
+}> = ({ title, tasks, workers, comments, onTaskSelect, onArchiveTask }) => (
     <div className="bg-gray-100 rounded-lg p-3 flex-1 min-h-[200px]">
-        <h3 className="font-bold text-gray-700 mb-3 text-center">{title} ({tasks.length})</h3>
+        <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-gray-700 text-center flex-1">{title} ({tasks.length})</h3>
+        </div>
         <div>
             {tasks.map(task => {
                 const taskCommentsCount = comments.filter(c => c.task_id === task.id).length;
-                return <TaskCard key={task.id} task={task} workers={workers} commentCount={taskCommentsCount} onOpenComments={() => onTaskSelect(task)} />;
+                return <TaskCard key={task.id} task={task} workers={workers} commentCount={taskCommentsCount} onOpenComments={() => onTaskSelect(task)} onArchive={onArchiveTask} />;
             })}
         </div>
     </div>
@@ -120,7 +136,7 @@ const DashboardView: React.FC = () => {
 
 
     const fetchDashboardData = async () => {
-        const tasksPromise = supabase.from('tasks').select('*');
+        const tasksPromise = supabase.from('tasks').select('*').or('is_archived.eq.false,is_archived.is.null');
         const workersPromise = supabase.from('workers').select('*');
         const commentsPromise = supabase.from('task_comments').select('*');
 
@@ -158,6 +174,26 @@ const DashboardView: React.FC = () => {
     const handleUpdateGoal = (id: number, updatedGoal: ProductionGoal) => {
         setGoals(currentGoals => currentGoals.map(g => g.id === id ? updatedGoal : g));
     };
+    
+    const handleArchiveTask = async (taskId: number) => {
+        if (!window.confirm(`¿Estás seguro de que quieres archivar esta tarea?`)) return;
+
+        // Optimistic UI update
+        const originalTasks = [...tasks];
+        setTasks(currentTasks => currentTasks.filter(t => t.id !== taskId));
+
+        const { error } = await supabase
+            .from('tasks')
+            .update({ is_archived: true })
+            .eq('id', taskId);
+
+        if (error) {
+            console.error('Error archiving task:', error);
+            alert('No se pudo archivar la tarea.');
+            setTasks(originalTasks); // Revert on error
+        }
+    };
+
 
     return (
         <div>
@@ -174,7 +210,7 @@ const DashboardView: React.FC = () => {
                     <div className="p-4 flex flex-col md:flex-row gap-4">
                        <KanbanColumn title="Pendiente" tasks={tasksPendiente} workers={workers} comments={comments} onTaskSelect={setSelectedTask} />
                        <KanbanColumn title="En Proceso" tasks={tasksEnProceso} workers={workers} comments={comments} onTaskSelect={setSelectedTask} />
-                       <KanbanColumn title="Terminado" tasks={tasksTerminado} workers={workers} comments={comments} onTaskSelect={setSelectedTask} />
+                       <KanbanColumn title="Terminado" tasks={tasksTerminado} workers={workers} comments={comments} onTaskSelect={setSelectedTask} onArchiveTask={handleArchiveTask} />
                     </div>
                 )}
             </Card>

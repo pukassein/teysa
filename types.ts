@@ -28,6 +28,7 @@ export interface Task {
     endTime?: Date;
     status: TaskStatus;
     orderId: string;
+    is_archived?: boolean;
 }
 
 export interface ProductionGoal {

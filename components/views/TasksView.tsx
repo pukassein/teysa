@@ -18,10 +18,10 @@ const getStatusColor = (status: TaskStatus): 'gray' | 'blue' | 'green' | 'red' =
 interface ManagerTaskCardProps {
     task: Task;
     workers: Worker[];
-    onUpdateTask: (updatedTask: Partial<Task>) => void;
-    onDeleteTask: () => void;
+    onUpdateTask: (taskId: number, updatedTask: Partial<Task>) => void;
+    onDeleteTask: (taskId: number) => void;
     isEditing: boolean;
-    onSetEditing: () => void;
+    onSetEditing: (taskId: number) => void;
     onCancelEditing: () => void;
 }
 
@@ -37,7 +37,6 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
     });
 
     useEffect(() => {
-        // Reset local state if the main task prop changes or when editing is cancelled
         setEditedFields({
             title: task.title,
             orderId: task.orderId,
@@ -64,7 +63,7 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
     };
 
     const handleSave = () => {
-        onUpdateTask(editedFields);
+        onUpdateTask(task.id, editedFields);
     };
     
     const handleWorkersChange = (workerId: number) => {
@@ -72,7 +71,7 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
         const newIds = currentIds.includes(workerId)
             ? currentIds.filter(id => id !== workerId)
             : [...currentIds, workerId];
-        onUpdateTask({ workerIds: newIds });
+        onUpdateTask(task.id, { workerIds: newIds });
     };
 
     const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -88,8 +87,11 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
                  update.startTime = new Date();
             }
         }
-        onUpdateTask(update);
+        onUpdateTask(task.id, update);
     };
+    
+    const handleArchive = () => onUpdateTask(task.id, { is_archived: true });
+    const handleUnarchive = () => onUpdateTask(task.id, { is_archived: false });
 
     const calculateDuration = () => {
         if (!task.startTime || !task.endTime) return null;
@@ -134,8 +136,13 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
                          </>
                     ) : (
                         <>
-                            <button onClick={onSetEditing} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium transition">Editar</button>
-                            <button onClick={onDeleteTask} className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm font-medium transition">Eliminar</button>
+                             {task.is_archived ? (
+                                <button onClick={handleUnarchive} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-sm font-medium transition">Desarchivar</button>
+                            ) : task.status === TaskStatus.Terminado && (
+                                <button onClick={handleArchive} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium transition">Archivar</button>
+                            )}
+                            <button onClick={() => onSetEditing(task.id)} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium transition">Editar</button>
+                            <button onClick={() => onDeleteTask(task.id)} className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm font-medium transition">Eliminar</button>
                         </>
                     )}
                 </div>
@@ -232,6 +239,7 @@ const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'i
             estimatedTime: parseFloat(estimatedTime),
             workerIds,
             status: TaskStatus.Pendiente,
+            is_archived: false,
         });
     };
 
@@ -279,15 +287,27 @@ const TasksView: React.FC = () => {
     const [showAddForm, setShowAddForm] = useState(false);
     const [loading, setLoading] = useState(true);
     const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+    const [filter, setFilter] = useState<'active' | 'archived'>('active');
 
     useEffect(() => {
         fetchTasks();
+    }, [filter]);
+    
+    useEffect(() => {
         fetchWorkers();
     }, []);
 
     const fetchTasks = async () => {
         setLoading(true);
-        const { data, error } = await supabase.from('tasks').select('*').order('id', { ascending: false });
+        let query = supabase.from('tasks').select('*').order('id', { ascending: false });
+
+        if (filter === 'active') {
+            query = query.or('is_archived.eq.false,is_archived.is.null');
+        } else {
+            query = query.eq('is_archived', true);
+        }
+
+        const { data, error } = await query;
         if (error) {
             console.error('Error fetching tasks:', error);
         } else if (data) {
@@ -303,16 +323,6 @@ const TasksView: React.FC = () => {
     };
 
     const handleUpdateTask = async (taskId: number, updatePayload: Partial<Task>) => {
-        const currentTask = tasks.find(t => t.id === taskId);
-        if (!currentTask) {
-            console.warn(`Task with ID ${taskId} not found for update.`);
-            return;
-        }
-        
-        const updatedTask = { ...currentTask, ...updatePayload };
-
-        setTasks(currentTasks => currentTasks.map(t => t.id === taskId ? updatedTask : t));
-
         const { error } = await supabase
             .from('tasks')
             .update(updatePayload)
@@ -320,9 +330,16 @@ const TasksView: React.FC = () => {
             
         if (error) {
             console.error('Error updating task:', error.message);
-            setTasks(currentTasks => currentTasks.map(t => t.id === taskId ? currentTask : t));
+            // Optionally revert optimistic UI update here
         } else {
              setEditingTaskId(null);
+             // If we archived or unarchived, remove from the current view.
+             if (updatePayload.is_archived !== undefined) {
+                 setTasks(currentTasks => currentTasks.filter(t => t.id !== taskId));
+             } else {
+                 // Otherwise, update in place
+                 setTasks(currentTasks => currentTasks.map(t => t.id === taskId ? {...t, ...updatePayload} : t));
+             }
         }
     };
 
@@ -352,14 +369,26 @@ const TasksView: React.FC = () => {
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-gray-800">Gestión de Tareas</h2>
-                {!showAddForm && (
+                {!showAddForm && filter === 'active' && (
                      <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition">
                         Añadir Nueva Tarea
                     </button>
                 )}
             </div>
+
+            <div className="border-b border-gray-200 mb-6">
+                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                    <button onClick={() => setFilter('active')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${filter === 'active' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                        Tareas Activas
+                    </button>
+                    <button onClick={() => setFilter('archived')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${filter === 'archived' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                        Tareas Archivadas
+                    </button>
+                </nav>
+            </div>
+
 
             {showAddForm && <AddTaskForm workers={workers} onAddTask={handleAddTask} onCancel={() => setShowAddForm(false)} />}
             
@@ -371,15 +400,15 @@ const TasksView: React.FC = () => {
                         key={task.id} 
                         task={task} 
                         workers={workers} 
-                        onUpdateTask={(updatedFields) => handleUpdateTask(task.id, updatedFields)}
-                        onDeleteTask={() => handleDeleteTask(task.id)}
+                        onUpdateTask={handleUpdateTask}
+                        onDeleteTask={handleDeleteTask}
                         isEditing={editingTaskId === task.id}
-                        onSetEditing={() => setEditingTaskId(task.id)}
+                        onSetEditing={setEditingTaskId}
                         onCancelEditing={() => setEditingTaskId(null)}
                     />
                 ))
             ) : (
-                !loading && <Card><p className="text-center text-gray-500">No hay tareas para gestionar.</p></Card>
+                !loading && <Card><p className="text-center text-gray-500 py-4">No hay tareas para gestionar en esta vista.</p></Card>
             )}
         </div>
     );
