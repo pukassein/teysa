@@ -5,6 +5,7 @@ import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import ClockIcon from '../icons/ClockIcon';
 import { supabase } from '../../supabaseClient';
+import { calculateWorkingHours } from '../../constants';
 
 const getStatusColor = (status: TaskStatus): 'gray' | 'blue' | 'green' | 'red' => {
     switch (status) {
@@ -13,6 +14,64 @@ const getStatusColor = (status: TaskStatus): 'gray' | 'blue' | 'green' | 'red' =
         case TaskStatus.Terminado: return 'green';
         case TaskStatus.Bloqueado: return 'red';
     }
+};
+
+const TimeRangeCalculator: React.FC<{
+    onDurationCalculated: (hours: number) => void;
+}> = ({ onDurationCalculated }) => {
+    const [startTime, setStartTime] = useState('07:00');
+    const [endTime, setEndTime] = useState('16:00');
+    const [calculatedHours, setCalculatedHours] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (startTime && endTime) {
+            const today = new Date();
+            const [startH, startM] = startTime.split(':').map(Number);
+            const [endH, endM] = endTime.split(':').map(Number);
+
+            const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), startH, startM);
+            const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), endH, endM);
+
+            if (endDate < startDate) {
+                endDate.setDate(endDate.getDate() + 1);
+            }
+            
+            const hours = calculateWorkingHours(startDate, endDate);
+            setCalculatedHours(hours);
+        }
+    }, [startTime, endTime]);
+
+    const handleApply = () => {
+        if (calculatedHours !== null) {
+            onDurationCalculated(calculatedHours);
+        }
+    };
+
+    return (
+        <div className="mt-2 p-3 bg-gray-50 rounded-lg border">
+            <p className="text-sm font-semibold text-gray-700 mb-2">Opcional: Calcular por rango</p>
+            <div className="grid grid-cols-2 gap-3 items-center">
+                <div>
+                    <label htmlFor="calc-start-time" className="text-xs text-gray-600">Desde</label>
+                    <input type="time" id="calc-start-time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full p-1 border border-gray-300 rounded-md text-sm" />
+                </div>
+                <div>
+                    <label htmlFor="calc-end-time" className="text-xs text-gray-600">Hasta</label>
+                    <input type="time" id="calc-end-time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full p-1 border border-gray-300 rounded-md text-sm" />
+                </div>
+            </div>
+            {calculatedHours !== null && (
+                <div className="mt-3 text-center">
+                    <p className="text-sm text-gray-800">
+                        Horas útiles: <span className="font-bold">{calculatedHours.toFixed(2)}</span>
+                    </p>
+                    <button type="button" onClick={handleApply} className="mt-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-xs font-medium transition">
+                        Usar esta duración
+                    </button>
+                </div>
+            )}
+        </div>
+    );
 };
 
 interface ManagerTaskCardProps {
@@ -32,14 +91,12 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
     
     const [editedFields, setEditedFields] = useState({
         title: task.title,
-        orderId: task.orderId,
         estimatedTime: task.estimatedTime,
     });
 
     useEffect(() => {
         setEditedFields({
             title: task.title,
-            orderId: task.orderId,
             estimatedTime: task.estimatedTime,
         });
     }, [task, isEditing]);
@@ -95,9 +152,8 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
 
     const calculateDuration = () => {
         if (!task.startTime || !task.endTime) return null;
-        const diffMs = new Date(task.endTime).getTime() - new Date(task.startTime).getTime();
-        const diffHours = diffMs / (1000 * 60 * 60);
-        return `${diffHours.toFixed(2)} horas`;
+        const workingHours = calculateWorkingHours(new Date(task.startTime), new Date(task.endTime));
+        return `${workingHours.toFixed(2)} horas útiles`;
     };
 
     return (
@@ -105,25 +161,26 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
                  {isEditing ? (
                     <div className="flex-1 space-y-2 mr-4 w-full">
-                        <div>
-                           <label className="text-xs font-medium text-gray-500">Título de la Tarea</label>
-                           <input name="title" value={editedFields.title} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                              <div>
-                                <label className="text-xs font-medium text-gray-500">Orden ID</label>
-                                <input name="orderId" value={editedFields.orderId} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                                <label className="text-xs font-medium text-gray-500">Título de la Tarea</label>
+                                <input name="title" value={editedFields.title} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                              </div>
                              <div>
                                 <label className="text-xs font-medium text-gray-500">Tiempo Est. (hrs)</label>
                                 <input type="number" name="estimatedTime" value={editedFields.estimatedTime} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                                <TimeRangeCalculator onDurationCalculated={(hours) => {
+                                    setEditedFields(prev => ({
+                                        ...prev,
+                                        estimatedTime: parseFloat(hours.toFixed(2))
+                                    }));
+                                }} />
                              </div>
                         </div>
                     </div>
                 ) : (
                     <div>
                         <h4 className="text-xl font-bold text-gray-800">{task.title}</h4>
-                        <p className="text-gray-500">Orden: {task.orderId}</p>
                         <p className="text-gray-500">Tiempo estimado: {task.estimatedTime} horas</p>
                     </div>
                 )}
@@ -217,7 +274,6 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
 
 const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'id'>) => void, onCancel: () => void }> = ({ workers, onAddTask, onCancel }) => {
     const [title, setTitle] = useState('');
-    const [orderId, setOrderId] = useState('');
     const [estimatedTime, setEstimatedTime] = useState('');
     const [workerIds, setWorkerIds] = useState<number[]>([]);
     
@@ -231,11 +287,10 @@ const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'i
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!title.trim() || !orderId.trim() || !estimatedTime) return;
+        if (!title.trim() || !estimatedTime) return;
         
         onAddTask({
             title,
-            orderId,
             estimatedTime: parseFloat(estimatedTime),
             workerIds,
             status: TaskStatus.Pendiente,
@@ -251,13 +306,10 @@ const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'i
                         <label htmlFor="title" className="block text-sm font-medium text-gray-700">Título de la Tarea</label>
                         <input type="text" id="title" value={title} onChange={e => setTitle(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                     </div>
-                     <div>
-                        <label htmlFor="orderId" className="block text-sm font-medium text-gray-700">ID de Orden</label>
-                        <input type="text" id="orderId" value={orderId} onChange={e => setOrderId(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                    </div>
                     <div>
                         <label htmlFor="estimatedTime" className="block text-sm font-medium text-gray-700">Tiempo Estimado (horas)</label>
                         <input type="number" id="estimatedTime" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} required min="0" step="0.5" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                        <TimeRangeCalculator onDurationCalculated={(hours) => setEstimatedTime(hours.toFixed(2))} />
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700">Asignar a Funcionarios</label>

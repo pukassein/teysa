@@ -10,14 +10,14 @@ export const WORKERS: Worker[] = [
 ];
 
 export const TASKS: Task[] = [
-    { id: 1, title: 'Pulido de Chasis', workerIds: [1], estimatedTime: 4, status: TaskStatus.Terminado, orderId: 'ORD-001', startTime: new Date('2023-10-27T08:00:00'), endTime: new Date('2023-10-27T11:45:00') },
-    { id: 2, title: 'Ensamblaje de Motor', workerIds: [2], estimatedTime: 6, status: TaskStatus.EnProceso, orderId: 'ORD-001', startTime: new Date('2023-10-27T09:15:00') },
-    { id: 3, title: 'Empaquetado', workerIds: [3], estimatedTime: 2, status: TaskStatus.Pendiente, orderId: 'ORD-002' },
-    { id: 4, title: 'Control de Calidad Final', workerIds: [4], estimatedTime: 3, status: TaskStatus.Pendiente, orderId: 'ORD-001' },
-    { id: 5, title: 'Corte de Material', workerIds: [5], estimatedTime: 8, status: TaskStatus.EnProceso, orderId: 'ORD-003', startTime: new Date('2023-10-27T22:00:00') },
-    { id: 6, title: 'Pintura', workerIds: [6], estimatedTime: 5, status: TaskStatus.Bloqueado, orderId: 'ORD-002' },
-    { id: 7, title: 'Soldadura de Componentes', workerIds: [1], estimatedTime: 3, status: TaskStatus.EnProceso, orderId: 'ORD-004', startTime: new Date() },
-    { id: 8, title: 'Preparación de Envío', workerIds: [4], estimatedTime: 2, status: TaskStatus.Pendiente, orderId: 'ORD-003' },
+    { id: 1, title: 'Pulido de Chasis', workerIds: [1], estimatedTime: 4, status: TaskStatus.Terminado, startTime: new Date('2023-10-27T08:00:00'), endTime: new Date('2023-10-27T11:45:00') },
+    { id: 2, title: 'Ensamblaje de Motor', workerIds: [2], estimatedTime: 6, status: TaskStatus.EnProceso, startTime: new Date('2023-10-27T09:15:00') },
+    { id: 3, title: 'Empaquetado', workerIds: [3], estimatedTime: 2, status: TaskStatus.Pendiente },
+    { id: 4, title: 'Control de Calidad Final', workerIds: [4], estimatedTime: 3, status: TaskStatus.Pendiente },
+    { id: 5, title: 'Corte de Material', workerIds: [5], estimatedTime: 8, status: TaskStatus.EnProceso, startTime: new Date('2023-10-27T22:00:00') },
+    { id: 6, title: 'Pintura', workerIds: [6], estimatedTime: 5, status: TaskStatus.Bloqueado },
+    { id: 7, title: 'Soldadura de Componentes', workerIds: [1], estimatedTime: 3, status: TaskStatus.EnProceso, startTime: new Date() },
+    { id: 8, title: 'Preparación de Envío', workerIds: [4], estimatedTime: 2, status: TaskStatus.Pendiente },
 ];
 
 export const PRODUCTION_GOALS: ProductionGoal[] = [
@@ -55,3 +55,51 @@ export const SHIFTS = [
     { name: 'Tarde', time: '14:00 - 22:00' },
     { name: 'Noche', time: '22:00 - 06:00' },
 ];
+
+// Helper function to calculate the intersection of two time intervals in milliseconds
+const getIntervalOverlap = (start1: number, end1: number, start2: number, end2: number): number => {
+    const overlapStart = Math.max(start1, start2);
+    const overlapEnd = Math.min(end1, end2);
+
+    if (overlapEnd > overlapStart) {
+        return overlapEnd - overlapStart;
+    }
+    return 0;
+};
+
+
+/**
+ * Calculates the total working hours between a start and end date, considering a fixed daily schedule.
+ * Working schedule: 07:00 - 12:00 and 13:00 - 17:30.
+ * @param startTime The start date and time of the task.
+ * @param endTime The end date and time of the task.
+ * @returns The total number of working hours.
+ */
+export function calculateWorkingHours(startTime: Date, endTime: Date): number {
+    if (!startTime || !endTime || endTime.getTime() < startTime.getTime()) {
+        return 0;
+    }
+
+    let totalWorkingMilliseconds = 0;
+    const cursor = new Date(startTime);
+    cursor.setHours(0, 0, 0, 0); // Start iterating from the beginning of the start day.
+
+    while (cursor.getTime() <= endTime.getTime()) {
+        // Define working periods for the current day
+        const morningStart = new Date(cursor).setHours(7, 0, 0, 0);
+        const morningEnd = new Date(cursor).setHours(12, 0, 0, 0);
+        const afternoonStart = new Date(cursor).setHours(13, 0, 0, 0);
+        const afternoonEnd = new Date(cursor).setHours(17, 30, 0, 0);
+
+        // Add overlap with morning shift
+        totalWorkingMilliseconds += getIntervalOverlap(startTime.getTime(), endTime.getTime(), morningStart, morningEnd);
+
+        // Add overlap with afternoon shift
+        totalWorkingMilliseconds += getIntervalOverlap(startTime.getTime(), endTime.getTime(), afternoonStart, afternoonEnd);
+        
+        // Move to the next day
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return totalWorkingMilliseconds / (1000 * 60 * 60); // Convert milliseconds to hours
+}

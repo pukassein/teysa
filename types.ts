@@ -1,4 +1,4 @@
-export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders';
+export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders' | 'suppliers';
 
 export enum TaskStatus {
   Pendiente = 'Pendiente',
@@ -27,7 +27,6 @@ export interface Task {
     startTime?: Date;
     endTime?: Date;
     status: TaskStatus;
-    orderId: string;
     is_archived?: boolean;
 }
 
@@ -39,6 +38,8 @@ export interface ProductionGoal {
     deadline: string;
 }
 
+export type Brand = 'Duramaxi' | 'Avanty' | 'Diletta' | 'Generica';
+
 export interface InventoryItem {
     id: number;
     name: string;
@@ -46,6 +47,7 @@ export interface InventoryItem {
     quantity: number;
     low_stock_threshold: number;
     unit: string;
+    brand: Brand;
 }
 
 export interface Machine {
@@ -84,4 +86,14 @@ export interface ProductionOrder {
   status: 'Pendiente' | 'En Proceso' | 'Completado';
   created_at: string;
   completed_at?: string;
+}
+
+export interface Supplier {
+  id: number;
+  company_name: string;
+  location?: string;
+  phone_number?: string;
+  contact_person?: string;
+  supplies_details?: string;
+  created_at: string;
 }

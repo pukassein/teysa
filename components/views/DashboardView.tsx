@@ -32,7 +32,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, workers, commentCount, onOpen
     return (
         <div className="bg-white p-3 rounded-lg shadow mb-3 border-l-4 border-blue-500">
             <p className="font-semibold text-gray-800">{task.title}</p>
-            <p className="text-sm text-gray-500">Orden: {task.orderId}</p>
             <div className="flex items-center justify-between mt-2">
                 <Badge color={getStatusColor(task.status)}>{task.status}</Badge>
                 <div className="flex items-center space-x-3">

@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import Card from '../ui/Card';
 import { TaskStatus, type Task, type Worker } from '../../types';
 import { supabase } from '../../supabaseClient';
+import { calculateWorkingHours } from '../../constants';
 
 interface WorkerStats {
     worker: Worker;
@@ -15,7 +16,7 @@ const WorkerReportCard: React.FC<{ stats: WorkerStats }> = ({ stats }) => {
     return (
         <div className="bg-gray-50 rounded-lg p-4 flex items-center space-x-4">
             <div className="w-16 h-16 rounded-full bg-gray-300 flex items-center justify-center text-gray-500 flex-shrink-0">
-                <svg xmlns="http://www.w.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
             </div>
@@ -23,7 +24,7 @@ const WorkerReportCard: React.FC<{ stats: WorkerStats }> = ({ stats }) => {
                 <h4 className="font-bold text-gray-800">{stats.worker.name}</h4>
                 <div className="text-sm text-gray-600 mt-2 space-y-1">
                     <p><strong>Tareas Completadas:</strong> {stats.completedTasks}</p>
-                    <p><strong>Horas Trabajadas:</strong> {stats.totalHours.toFixed(2)}</p>
+                    <p><strong>Horas Útiles Trabajadas:</strong> {stats.totalHours.toFixed(2)}</p>
                     <p><strong>Eficiencia Promedio:</strong> 
                         {stats.efficiency !== null ? (
                              <span className={`font-bold ${stats.efficiency >= 100 ? 'text-green-600' : 'text-orange-600'}`}>
@@ -69,11 +70,11 @@ const ReportsView: React.FC = () => {
     const efficiencyData = tasks
         .filter(task => task.status === TaskStatus.Terminado && task.startTime && task.endTime)
         .map(task => {
-            const actualTime = (new Date(task.endTime!).getTime() - new Date(task.startTime!).getTime()) / (1000 * 60 * 60);
+            const actualTime = calculateWorkingHours(new Date(task.startTime!), new Date(task.endTime!));
             return {
                 name: `Tarea ${task.id}`,
                 'Tiempo Estimado': task.estimatedTime,
-                'Tiempo Real': parseFloat(actualTime.toFixed(2)),
+                'Tiempo Real (útil)': parseFloat(actualTime.toFixed(2)),
             };
         });
 
@@ -89,7 +90,7 @@ const ReportsView: React.FC = () => {
         let totalEstimated = 0;
 
         completedWorkerTasks.forEach(task => {
-            const actualTime = (new Date(task.endTime!).getTime() - new Date(task.startTime!).getTime()) / (1000 * 60 * 60);
+            const actualTime = calculateWorkingHours(new Date(task.startTime!), new Date(task.endTime!));
             totalHours += actualTime;
             totalEstimated += task.estimatedTime;
         });
@@ -137,7 +138,7 @@ const ReportsView: React.FC = () => {
                                 <Tooltip />
                                 <Legend />
                                 <Bar dataKey="Tiempo Estimado" fill="#8884d8" />
-                                <Bar dataKey="Tiempo Real" fill="#82ca9d" />
+                                <Bar dataKey="Tiempo Real (útil)" fill="#82ca9d" />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (

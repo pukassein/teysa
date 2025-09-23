@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import type { InventoryItem } from '../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import type { InventoryItem, Brand } from '../../types';
 import Card from '../ui/Card';
 import { supabase } from '../../supabaseClient';
+import Badge from '../ui/Badge';
+
+const brandOptions: Brand[] = ['Duramaxi', 'Avanty', 'Diletta', 'Generica'];
 
 const InventoryItemForm: React.FC<{
     item?: InventoryItem;
@@ -14,6 +17,7 @@ const InventoryItemForm: React.FC<{
         type: item?.type || 'Materia Prima',
         quantity: item?.quantity?.toString() ?? '',
         low_stock_threshold: item?.low_stock_threshold?.toString() ?? '',
+        brand: item?.brand || 'Generica',
     });
 
     const standardUnits = ['unidades', 'kg', 'metros'];
@@ -34,6 +38,7 @@ const InventoryItemForm: React.FC<{
             type: item?.type || 'Materia Prima',
             quantity: item?.quantity?.toString() ?? '',
             low_stock_threshold: item?.low_stock_threshold?.toString() ?? '',
+            brand: item?.brand || 'Generica',
         });
         setUnitState(getInitialUnitState());
     }, [item]);
@@ -69,7 +74,8 @@ const InventoryItemForm: React.FC<{
             ...formData,
             quantity: Number(formData.quantity) || 0,
             low_stock_threshold: Number(formData.low_stock_threshold) || 0,
-            unit: finalUnit
+            unit: finalUnit,
+            brand: formData.brand as Brand,
         };
         
         onSave(isEdit ? { ...item, ...itemData } : itemData);
@@ -82,6 +88,12 @@ const InventoryItemForm: React.FC<{
                     <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nombre</label>
                         <input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                    </div>
+                     <div>
+                        <label htmlFor="brand" className="block text-sm font-medium text-gray-700">Marca</label>
+                        <select name="brand" id="brand" value={formData.brand} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                            {brandOptions.map(brand => <option key={brand} value={brand}>{brand}</option>)}
+                        </select>
                     </div>
                     <div>
                         <label htmlFor="type" className="block text-sm font-medium text-gray-700">Tipo</label>
@@ -135,13 +147,28 @@ const InventoryItemForm: React.FC<{
     );
 };
 
+const getBrandColor = (brand: Brand): 'blue' | 'green' | 'yellow' | 'gray' => {
+    switch(brand) {
+        case 'Duramaxi': return 'blue';
+        case 'Avanty': return 'green';
+        case 'Diletta': return 'yellow';
+        case 'Generica': return 'gray';
+        default: return 'gray';
+    }
+}
+
 const InventoryRow: React.FC<{ item: InventoryItem; onEdit: (item: InventoryItem) => void; onDelete: (id: number) => void; }> = ({ item, onEdit, onDelete }) => {
     const isLowStock = item.quantity < item.low_stock_threshold;
     return (
         <tr className={`border-b ${isLowStock ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}>
             <td className="p-4">
-                <p className="font-semibold text-gray-800">{item.name}</p>
-                <p className="text-sm text-gray-500">{item.type}</p>
+                <div className="flex items-center space-x-3">
+                     <Badge color={getBrandColor(item.brand)}>{item.brand}</Badge>
+                    <div>
+                        <p className="font-semibold text-gray-800">{item.name}</p>
+                        <p className="text-sm text-gray-500">{item.type}</p>
+                    </div>
+                </div>
             </td>
             <td className="p-4 text-center">
                 <span className={`font-mono text-lg ${isLowStock ? 'text-red-600 font-bold' : 'text-gray-700'}`}>
@@ -171,6 +198,7 @@ const InventoryView: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [showAddForm, setShowAddForm] = useState(false);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+    const [brandFilter, setBrandFilter] = useState<'all' | Brand>('all');
 
     useEffect(() => {
         fetchInventory();
@@ -222,8 +250,17 @@ const InventoryView: React.FC = () => {
         }
     };
 
-    const rawMaterials = items.filter(i => i.type === 'Materia Prima');
-    const finishedProducts = items.filter(i => i.type === 'Producto Terminado');
+    const filteredItems = useMemo(() => {
+        if (brandFilter === 'all') {
+            return items;
+        }
+        // For specific brands, show only their items. This also covers the 'Generica' case correctly.
+        return items.filter(i => i.brand === brandFilter);
+    }, [items, brandFilter]);
+
+
+    const rawMaterials = filteredItems.filter(i => i.type === 'Materia Prima');
+    const finishedProducts = filteredItems.filter(i => i.type === 'Producto Terminado');
 
     const InventoryTable: React.FC<{title: string, items: InventoryItem[]}> = ({title, items}) => (
         <Card title={title} className="mb-8">
@@ -244,22 +281,43 @@ const InventoryView: React.FC = () => {
                         </tbody>
                     </table>
                  ) : (
-                    <p className="text-center text-gray-500 py-4">No hay artículos en esta categoría.</p>
+                    <p className="text-center text-gray-500 py-4">No hay artículos para el filtro seleccionado.</p>
                  )}
             </div>
         </Card>
     );
+    
+    const FilterButton: React.FC<{ brand: 'all' | Brand, activeFilter: 'all' | Brand, setFilter: (f: 'all' | Brand) => void }> = ({ brand, activeFilter, setFilter }) => {
+        const isActive = brand === activeFilter;
+        let colorClasses = 'bg-white text-gray-700 hover:bg-gray-100';
+        if (isActive) {
+            colorClasses = 'bg-blue-600 text-white hover:bg-blue-700';
+        }
+        return (
+            <button onClick={() => setFilter(brand)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition shadow-sm border ${isActive ? 'border-blue-700' : 'border-gray-300'} ${colorClasses}`}>
+                {brand === 'all' ? 'Todos' : brand}
+            </button>
+        )
+    };
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">Control de Inventario</h2>
                 {!showAddForm && !editingItem && (
-                     <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition">
+                     <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition flex-shrink-0">
                         Añadir Artículo
                     </button>
                 )}
             </div>
+            
+            <Card className="mb-6">
+                <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+                    <span className="text-sm font-medium text-gray-600 mr-2">Filtrar por marca:</span>
+                    <FilterButton brand="all" activeFilter={brandFilter} setFilter={setBrandFilter} />
+                    {brandOptions.map(b => <FilterButton key={b} brand={b} activeFilter={brandFilter} setFilter={setBrandFilter} />)}
+                </div>
+            </Card>
 
             {showAddForm && <InventoryItemForm onSave={handleAddItem} onCancel={() => setShowAddForm(false)} />}
             {editingItem && <InventoryItemForm item={editingItem} onSave={handleUpdateItem} onCancel={() => setEditingItem(null)} isEdit />}

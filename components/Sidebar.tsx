@@ -7,6 +7,7 @@ import MachineIcon from './icons/MachineIcon';
 import ReportsIcon from './icons/ReportsIcon';
 import UsersIcon from './icons/UsersIcon';
 import ProductionIcon from './icons/ProductionIcon';
+import SupplierIcon from './icons/SupplierIcon';
 
 interface SidebarProps {
     activeView: View;
@@ -40,6 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, isOpen, se
         { view: 'productionOrders', label: 'Órdenes de Producción', icon: <ProductionIcon className="h-6 w-6" /> },
         { view: 'workers', label: 'Funcionarios', icon: <UsersIcon className="h-6 w-6" /> },
         { view: 'inventory', label: 'Inventario', icon: <InventoryIcon className="h-6 w-6" /> },
+        { view: 'suppliers', label: 'Proveedores', icon: <SupplierIcon className="h-6 w-6" /> },
         { view: 'machines', label: 'Máquinas', icon: <MachineIcon className="h-6 w-6" /> },
         { view: 'reports', label: 'Reportes', icon: <ReportsIcon className="h-6 w-6" /> },
     ];
