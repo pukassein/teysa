@@ -306,7 +306,6 @@ const RecipeManager: React.FC<{
                         <p className="text-center text-gray-500 py-6">No hay productos fabricables. Créalos en el paso anterior.</p>
                     )}
                 </div>
-{/* FIX: Correctly close div and Card elements to fix invalid JSX structure. */}
             </div>
         </Card>
     );
@@ -350,7 +349,8 @@ const ProductionOrdersView: React.FC = () => {
 
         } catch (error: any) {
             console.error('Error fetching production data:', error);
-            alert("Error al cargar los datos: " + error.message);
+            const errorMessage = error?.message ? error.message : "Ocurrió un error inesperado. Revisa la consola para más detalles.";
+            alert("Error al cargar los datos: " + errorMessage);
         } finally {
             setLoading(false);
         }

@@ -1,4 +1,4 @@
-export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders' | 'suppliers';
+export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders' | 'suppliers' | 'productionLog';
 
 export enum TaskStatus {
   Pendiente = 'Pendiente',
@@ -95,5 +95,14 @@ export interface Supplier {
   phone_number?: string;
   contact_person?: string;
   supplies_details?: string;
+  created_at: string;
+}
+
+export interface ProductionLog {
+  id: number;
+  worker_id: number;
+  inventory_id: number;
+  quantity: number;
+  production_date: string; // 'YYYY-MM-DD'
   created_at: string;
 }
