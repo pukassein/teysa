@@ -6,6 +6,7 @@ import Badge from '../ui/Badge';
 import ClockIcon from '../icons/ClockIcon';
 import { supabase } from '../../supabaseClient';
 import { calculateWorkingHours } from '../../constants';
+import SearchIcon from '../icons/SearchIcon';
 
 const getStatusColor = (status: TaskStatus): 'gray' | 'blue' | 'green' | 'red' => {
     switch (status) {
@@ -19,27 +20,33 @@ const getStatusColor = (status: TaskStatus): 'gray' | 'blue' | 'green' | 'red' =
 const TimeRangeCalculator: React.FC<{
     onDurationCalculated: (hours: number) => void;
 }> = ({ onDurationCalculated }) => {
+    const getTodayString = () => {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
+    const [startDate, setStartDate] = useState(getTodayString());
     const [startTime, setStartTime] = useState('07:00');
+    const [endDate, setEndDate] = useState(getTodayString());
     const [endTime, setEndTime] = useState('16:00');
     const [calculatedHours, setCalculatedHours] = useState<number | null>(null);
 
     useEffect(() => {
-        if (startTime && endTime) {
-            const today = new Date();
-            const [startH, startM] = startTime.split(':').map(Number);
-            const [endH, endM] = endTime.split(':').map(Number);
+        if (startDate && startTime && endDate && endTime) {
+            const startDateTime = new Date(`${startDate}T${startTime}`);
+            const endDateTime = new Date(`${endDate}T${endTime}`);
 
-            const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), startH, startM);
-            const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), endH, endM);
-
-            if (endDate < startDate) {
-                endDate.setDate(endDate.getDate() + 1);
+            if (endDateTime >= startDateTime) {
+                const hours = calculateWorkingHours(startDateTime, endDateTime);
+                setCalculatedHours(hours);
+            } else {
+                setCalculatedHours(0);
             }
-            
-            const hours = calculateWorkingHours(startDate, endDate);
-            setCalculatedHours(hours);
         }
-    }, [startTime, endTime]);
+    }, [startDate, startTime, endDate, endTime]);
 
     const handleApply = () => {
         if (calculatedHours !== null) {
@@ -50,14 +57,20 @@ const TimeRangeCalculator: React.FC<{
     return (
         <div className="mt-2 p-3 bg-gray-50 rounded-lg border">
             <p className="text-sm font-semibold text-gray-700 mb-2">Opcional: Calcular por rango</p>
-            <div className="grid grid-cols-2 gap-3 items-center">
+            <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label htmlFor="calc-start-time" className="text-xs text-gray-600">Desde</label>
-                    <input type="time" id="calc-start-time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full p-1 border border-gray-300 rounded-md text-sm" />
+                    <label className="text-xs text-gray-600">Desde</label>
+                    <div className="flex gap-2 mt-1">
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="block w-full p-1 border border-gray-300 rounded-md text-sm" aria-label="Fecha de inicio"/>
+                        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="block w-full p-1 border border-gray-300 rounded-md text-sm" aria-label="Hora de inicio" />
+                    </div>
                 </div>
                 <div>
-                    <label htmlFor="calc-end-time" className="text-xs text-gray-600">Hasta</label>
-                    <input type="time" id="calc-end-time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full p-1 border border-gray-300 rounded-md text-sm" />
+                    <label className="text-xs text-gray-600">Hasta</label>
+                     <div className="flex gap-2 mt-1">
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="block w-full p-1 border border-gray-300 rounded-md text-sm" aria-label="Fecha de fin"/>
+                        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="block w-full p-1 border border-gray-300 rounded-md text-sm" aria-label="Hora de fin"/>
+                    </div>
                 </div>
             </div>
             {calculatedHours !== null && (
@@ -340,6 +353,7 @@ const TasksView: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
     const [filter, setFilter] = useState<'active' | 'archived'>('active');
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         fetchTasks();
@@ -419,6 +433,10 @@ const TasksView: React.FC = () => {
         }
     };
 
+    const filteredTasks = tasks.filter(task =>
+        task.title.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <div>
             <div className="flex justify-between items-center mb-4">
@@ -430,15 +448,29 @@ const TasksView: React.FC = () => {
                 )}
             </div>
 
-            <div className="border-b border-gray-200 mb-6">
-                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button onClick={() => setFilter('active')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${filter === 'active' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                        Tareas Activas
-                    </button>
-                    <button onClick={() => setFilter('archived')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${filter === 'archived' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                        Tareas Archivadas
-                    </button>
-                </nav>
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <div className="border-b border-gray-200 w-full md:w-auto">
+                    <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                        <button onClick={() => { setFilter('active'); setSearchTerm(''); }} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${filter === 'active' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                            Tareas Activas
+                        </button>
+                        <button onClick={() => { setFilter('archived'); setSearchTerm(''); }} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${filter === 'archived' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                            Tareas Archivadas
+                        </button>
+                    </nav>
+                </div>
+                <div className="relative w-full md:w-64">
+                    <input
+                        type="text"
+                        placeholder="Buscar por título..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <SearchIcon className="h-5 w-5 text-gray-400" />
+                    </div>
+                </div>
             </div>
 
 
@@ -446,8 +478,8 @@ const TasksView: React.FC = () => {
             
             {loading && <p>Cargando tareas...</p>}
 
-            {!loading && tasks.length > 0 ? (
-                tasks.map(task => (
+            {!loading && filteredTasks.length > 0 ? (
+                filteredTasks.map(task => (
                     <ManagerTaskCard 
                         key={task.id} 
                         task={task} 
@@ -460,7 +492,7 @@ const TasksView: React.FC = () => {
                     />
                 ))
             ) : (
-                !loading && <Card><p className="text-center text-gray-500 py-4">No hay tareas para gestionar en esta vista.</p></Card>
+                !loading && <Card><p className="text-center text-gray-500 py-4">No hay tareas para gestionar en esta vista {searchTerm && `que coincidan con "${searchTerm}"`}.</p></Card>
             )}
         </div>
     );

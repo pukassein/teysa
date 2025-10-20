@@ -70,7 +70,7 @@ const getIntervalOverlap = (start1: number, end1: number, start2: number, end2: 
 
 /**
  * Calculates the total working hours between a start and end date, considering a fixed daily schedule.
- * Working schedule: 07:00 - 12:00 and 13:00 - 17:30.
+ * Working schedule: 07:00 - 12:00 and 13:00 - 17:30 on weekdays.
  * @param startTime The start date and time of the task.
  * @param endTime The end date and time of the task.
  * @returns The total number of working hours.
@@ -85,17 +85,22 @@ export function calculateWorkingHours(startTime: Date, endTime: Date): number {
     cursor.setHours(0, 0, 0, 0); // Start iterating from the beginning of the start day.
 
     while (cursor.getTime() <= endTime.getTime()) {
-        // Define working periods for the current day
-        const morningStart = new Date(cursor).setHours(7, 0, 0, 0);
-        const morningEnd = new Date(cursor).setHours(12, 0, 0, 0);
-        const afternoonStart = new Date(cursor).setHours(13, 0, 0, 0);
-        const afternoonEnd = new Date(cursor).setHours(17, 30, 0, 0);
+        const dayOfWeek = cursor.getDay(); // 0 = Sunday, 6 = Saturday
 
-        // Add overlap with morning shift
-        totalWorkingMilliseconds += getIntervalOverlap(startTime.getTime(), endTime.getTime(), morningStart, morningEnd);
+        // Only calculate for weekdays
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            // Define working periods for the current day
+            const morningStart = new Date(cursor).setHours(7, 0, 0, 0);
+            const morningEnd = new Date(cursor).setHours(12, 0, 0, 0);
+            const afternoonStart = new Date(cursor).setHours(13, 0, 0, 0);
+            const afternoonEnd = new Date(cursor).setHours(17, 30, 0, 0);
 
-        // Add overlap with afternoon shift
-        totalWorkingMilliseconds += getIntervalOverlap(startTime.getTime(), endTime.getTime(), afternoonStart, afternoonEnd);
+            // Add overlap with morning shift
+            totalWorkingMilliseconds += getIntervalOverlap(startTime.getTime(), endTime.getTime(), morningStart, morningEnd);
+
+            // Add overlap with afternoon shift
+            totalWorkingMilliseconds += getIntervalOverlap(startTime.getTime(), endTime.getTime(), afternoonStart, afternoonEnd);
+        }
         
         // Move to the next day
         cursor.setDate(cursor.getDate() + 1);

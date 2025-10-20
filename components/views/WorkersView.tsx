@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { Worker } from '../../types';
 import Card from '../ui/Card';
 import { supabase } from '../../supabaseClient';
+import SearchIcon from '../icons/SearchIcon';
 
 const EditWorkerForm: React.FC<{ worker: Worker; onSave: (id: number, updates: { name: string; shift: Worker['shift'] }) => void; onCancel: () => void }> = ({ worker, onSave, onCancel }) => {
     const [name, setName] = useState(worker.name);
@@ -142,6 +143,7 @@ const WorkersView: React.FC = () => {
     const [showAddForm, setShowAddForm] = useState(false);
     const [loading, setLoading] = useState(true);
     const [editingWorkerId, setEditingWorkerId] = useState<number | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         fetchWorkers();
@@ -197,27 +199,45 @@ const WorkersView: React.FC = () => {
         }
     };
 
+    const filteredWorkers = workers.filter(worker =>
+        worker.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <div>
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-800">Gestión de Funcionarios</h2>
-                {!showAddForm && (
-                    <button 
-                        onClick={() => setShowAddForm(true)}
-                        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
-                    >
-                        Añadir Funcionario
-                    </button>
-                )}
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <h2 className="text-2xl font-bold text-gray-800 self-start md:self-center">Gestión de Funcionarios</h2>
+                <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                    <div className="relative w-full md:w-64">
+                        <input
+                            type="text"
+                            placeholder="Buscar funcionario..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <SearchIcon className="h-5 w-5 text-gray-400" />
+                        </div>
+                    </div>
+                    {!showAddForm && (
+                        <button 
+                            onClick={() => setShowAddForm(true)}
+                            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition w-full md:w-auto"
+                        >
+                            Añadir Funcionario
+                        </button>
+                    )}
+                </div>
             </div>
 
             {showAddForm && <AddWorkerForm onAdd={handleAddWorker} onCancel={() => setShowAddForm(false)} />}
             
             {loading && <p>Cargando funcionarios...</p>}
 
-            {!loading && (
+            {!loading && filteredWorkers.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {workers.map(worker => (
+                    {filteredWorkers.map(worker => (
                         editingWorkerId === worker.id ? (
                             <EditWorkerForm 
                                 key={worker.id} 
@@ -229,6 +249,9 @@ const WorkersView: React.FC = () => {
                         )
                     ))}
                 </div>
+            )}
+            {!loading && filteredWorkers.length === 0 && (
+                <Card><p className="text-center text-gray-500 py-4">No se encontraron funcionarios {searchTerm && `con el término "${searchTerm}"`}.</p></Card>
             )}
         </div>
     );

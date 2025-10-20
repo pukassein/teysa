@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Machine } from '../../types';
 import { MachineStatus } from '../../types';
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import { supabase } from '../../supabaseClient';
+import SearchIcon from '../icons/SearchIcon';
 
 const getStatusColor = (status: MachineStatus): 'green' | 'yellow' | 'gray' => {
     switch (status) {
@@ -64,6 +64,7 @@ const MachineCard: React.FC<{ machine: Machine; onUpdate: (id: number, updates: 
 const MachinesView: React.FC = () => {
     const [machines, setMachines] = useState<Machine[]>([]);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         fetchMachines();
@@ -92,18 +93,40 @@ const MachinesView: React.FC = () => {
             setMachines(oldMachines);
         }
     };
+
+    const filteredMachines = machines.filter(machine =>
+        machine.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
     
     return (
         <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Estado de Máquinas y Herramientas</h2>
+             <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <h2 className="text-2xl font-bold text-gray-800">Estado de Máquinas y Herramientas</h2>
+                <div className="relative w-full md:w-64">
+                    <input
+                        type="text"
+                        placeholder="Buscar máquina..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <SearchIcon className="h-5 w-5 text-gray-400" />
+                    </div>
+                </div>
+            </div>
             {loading ? (
                 <p>Cargando máquinas...</p>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {machines.map(machine => (
-                        <MachineCard key={machine.id} machine={machine} onUpdate={handleUpdateMachine} />
-                    ))}
-                </div>
+                filteredMachines.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {filteredMachines.map(machine => (
+                            <MachineCard key={machine.id} machine={machine} onUpdate={handleUpdateMachine} />
+                        ))}
+                    </div>
+                ) : (
+                     <Card><p className="text-center text-gray-500 py-4">No se encontraron máquinas {searchTerm ? `con el término "${searchTerm}"` : ''}.</p></Card>
+                )
             )}
         </div>
     );

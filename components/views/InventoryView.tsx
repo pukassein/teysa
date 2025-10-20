@@ -3,6 +3,7 @@ import type { InventoryItem, Brand } from '../../types';
 import Card from '../ui/Card';
 import { supabase } from '../../supabaseClient';
 import Badge from '../ui/Badge';
+import SearchIcon from '../icons/SearchIcon';
 
 const brandOptions: Brand[] = ['Duramaxi', 'Avanty', 'Diletta', 'Generica'];
 
@@ -199,6 +200,7 @@ const InventoryView: React.FC = () => {
     const [showAddForm, setShowAddForm] = useState(false);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [brandFilter, setBrandFilter] = useState<'all' | Brand>('all');
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         fetchInventory();
@@ -251,12 +253,19 @@ const InventoryView: React.FC = () => {
     };
 
     const filteredItems = useMemo(() => {
-        if (brandFilter === 'all') {
-            return items;
+        let results = items;
+
+        if (brandFilter !== 'all') {
+            results = results.filter(i => i.brand === brandFilter);
         }
-        // For specific brands, show only their items. This also covers the 'Generica' case correctly.
-        return items.filter(i => i.brand === brandFilter);
-    }, [items, brandFilter]);
+        
+        if (searchTerm.trim() !== '') {
+            results = results.filter(i => 
+                i.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+        return results;
+    }, [items, brandFilter, searchTerm]);
 
 
     const rawMaterials = filteredItems.filter(i => i.type === 'Materia Prima');
@@ -281,7 +290,7 @@ const InventoryView: React.FC = () => {
                         </tbody>
                     </table>
                  ) : (
-                    <p className="text-center text-gray-500 py-4">No hay artículos para el filtro seleccionado.</p>
+                    <p className="text-center text-gray-500 py-4">No hay artículos para los filtros seleccionados.</p>
                  )}
             </div>
         </Card>
@@ -312,10 +321,24 @@ const InventoryView: React.FC = () => {
             </div>
             
             <Card className="mb-6">
-                <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-                    <span className="text-sm font-medium text-gray-600 mr-2">Filtrar por marca:</span>
-                    <FilterButton brand="all" activeFilter={brandFilter} setFilter={setBrandFilter} />
-                    {brandOptions.map(b => <FilterButton key={b} brand={b} activeFilter={brandFilter} setFilter={setBrandFilter} />)}
+                <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                    <div className="flex items-center space-x-2 overflow-x-auto pb-2 self-start">
+                        <span className="text-sm font-medium text-gray-600 mr-2 flex-shrink-0">Filtrar por marca:</span>
+                        <FilterButton brand="all" activeFilter={brandFilter} setFilter={setBrandFilter} />
+                        {brandOptions.map(b => <FilterButton key={b} brand={b} activeFilter={brandFilter} setFilter={setBrandFilter} />)}
+                    </div>
+                    <div className="relative w-full md:w-64">
+                        <input
+                            type="text"
+                            placeholder="Buscar artículo..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <SearchIcon className="h-5 w-5 text-gray-400" />
+                        </div>
+                    </div>
                 </div>
             </Card>
 
