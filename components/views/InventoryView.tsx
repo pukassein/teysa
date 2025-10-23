@@ -21,12 +21,12 @@ const InventoryItemForm: React.FC<{
         brand: item?.brand || 'Generica',
     });
 
-    const standardUnits = ['unidades', 'kg', 'metros'];
+    const standardUnits = ['docenas', 'unidades', 'kg', 'metros'];
 
     const getInitialUnitState = () => {
-        if (!item?.unit) return { selection: 'unidades', custom: '' };
-        if (standardUnits.includes(item.unit)) {
-            return { selection: item.unit, custom: '' };
+        if (!item?.unit) return { selection: 'docenas', custom: '' };
+        if (standardUnits.includes(item.unit.toLowerCase())) {
+            return { selection: item.unit.toLowerCase(), custom: '' };
         }
         return { selection: 'Otro', custom: item.unit };
     };
@@ -116,6 +116,7 @@ const InventoryItemForm: React.FC<{
                              <div className={unitState.selection === 'Otro' ? 'col-span-1' : 'col-span-2'}>
                                 <label htmlFor="unit" className="block text-sm font-medium text-gray-700">Unidad</label>
                                 <select id="unit" value={unitState.selection} onChange={handleUnitSelectionChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                                    <option value="docenas">Docenas</option>
                                     <option value="unidades">Unidades</option>
                                     <option value="kg">Kilogramos (kg)</option>
                                     <option value="metros">Metros (m)</option>
@@ -142,6 +143,97 @@ const InventoryItemForm: React.FC<{
                 <div className="flex justify-end space-x-2 pt-2">
                     <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition">Cancelar</button>
                     <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">{isEdit ? 'Guardar Cambios' : 'Añadir Artículo'}</button>
+                </div>
+            </form>
+        </Card>
+    );
+};
+
+const StockMovementForm: React.FC<{
+    items: InventoryItem[];
+    onSave: () => void;
+    onCancel: () => void;
+}> = ({ items, onSave, onCancel }) => {
+    const [itemId, setItemId] = useState<string>('');
+    const [movementType, setMovementType] = useState<'Salida' | 'Entrada'>('Salida');
+    const [quantity, setQuantity] = useState<string>('');
+    const [reason, setReason] = useState<string>('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!itemId || !quantity || Number(quantity) <= 0) {
+            alert('Por favor, seleccione un artículo e ingrese una cantidad válida.');
+            return;
+        }
+        setIsSubmitting(true);
+
+        const selectedItem = items.find(i => i.id === Number(itemId));
+        if (!selectedItem) {
+            alert('Artículo no encontrado.');
+            setIsSubmitting(false);
+            return;
+        }
+
+        const quantityChange = Number(quantity);
+        const newQuantity = movementType === 'Salida'
+            ? selectedItem.quantity - quantityChange
+            : selectedItem.quantity + quantityChange;
+
+        if (movementType === 'Salida' && newQuantity < 0) {
+            alert('No hay suficiente stock para esta salida.');
+            setIsSubmitting(false);
+            return;
+        }
+
+        const { error } = await supabase
+            .from('inventory')
+            .update({ quantity: newQuantity })
+            .eq('id', itemId);
+
+        if (error) {
+            console.error('Error updating stock:', error);
+            alert('Error al actualizar el stock: ' + error.message);
+        } else {
+            // In a real app, you'd also log this movement to a separate table
+            // console.log(`Movement logged: ${movementType} of ${quantity} for item ${itemId}. Reason: ${reason}`);
+            alert('¡Stock actualizado con éxito!');
+            onSave();
+            onCancel();
+        }
+        setIsSubmitting(false);
+    };
+
+    return (
+        <Card title="Registrar Movimiento de Stock" className="mb-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Artículo</label>
+                        <select value={itemId} onChange={e => setItemId(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                            <option value="" disabled>Seleccionar...</option>
+                            {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Tipo de Movimiento</label>
+                        <select value={movementType} onChange={e => setMovementType(e.target.value as any)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                            <option value="Salida">Salida (Venta, Desperdicio, etc.)</option>
+                            <option value="Entrada">Entrada / Ajuste</option>
+                        </select>
+                    </div>
+                     <div>
+                        <label className="block text-sm font-medium text-gray-700">Cantidad</label>
+                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} required min="1" placeholder="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                    </div>
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium text-gray-700">Razón / Nota (Opcional)</label>
+                    <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: Venta a cliente X, ajuste de conteo" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                </div>
+                <div className="flex justify-end space-x-2 pt-2">
+                    <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition">Cancelar</button>
+                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300">{isSubmitting ? 'Guardando...' : 'Guardar Movimiento'}</button>
                 </div>
             </form>
         </Card>
@@ -198,6 +290,7 @@ const InventoryView: React.FC = () => {
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddForm, setShowAddForm] = useState(false);
+    const [showStockMovementForm, setShowStockMovementForm] = useState(false);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [brandFilter, setBrandFilter] = useState<'all' | Brand>('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -308,15 +401,22 @@ const InventoryView: React.FC = () => {
             </button>
         )
     };
+    
+    const isFormOpen = showAddForm || !!editingItem || showStockMovementForm;
 
     return (
         <div>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">Control de Inventario</h2>
-                {!showAddForm && !editingItem && (
-                     <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition flex-shrink-0">
-                        Añadir Artículo
-                    </button>
+                {!isFormOpen && (
+                     <div className="flex space-x-2">
+                        <button onClick={() => setShowStockMovementForm(true)} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition flex-shrink-0">
+                            Registrar Movimiento
+                        </button>
+                        <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition flex-shrink-0">
+                            Añadir Artículo
+                        </button>
+                    </div>
                 )}
             </div>
             
@@ -344,6 +444,8 @@ const InventoryView: React.FC = () => {
 
             {showAddForm && <InventoryItemForm onSave={handleAddItem} onCancel={() => setShowAddForm(false)} />}
             {editingItem && <InventoryItemForm item={editingItem} onSave={handleUpdateItem} onCancel={() => setEditingItem(null)} isEdit />}
+            {showStockMovementForm && <StockMovementForm items={items} onSave={fetchInventory} onCancel={() => setShowStockMovementForm(false)} />}
+
 
             {loading ? (
                 <p className="text-center text-gray-500">Cargando inventario...</p>

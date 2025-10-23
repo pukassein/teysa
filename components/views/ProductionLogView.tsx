@@ -30,23 +30,87 @@ const ProductionLogForm: React.FC<{
         }
 
         setIsSubmitting(true);
-        const { error } = await supabase.from('production_log').insert({
+        const producedQuantity = parseInt(quantity);
+        const producedInventoryId = parseInt(inventoryId);
+
+        // 1. Log the production
+        const { error: logError } = await supabase.from('production_log').insert({
             worker_id: parseInt(workerId),
-            inventory_id: parseInt(inventoryId),
-            quantity: parseInt(quantity),
+            inventory_id: producedInventoryId,
+            quantity: producedQuantity,
             production_date: productionDate,
         });
 
-        if (error) {
-            console.error('Error logging production:', error);
-            alert('Error al registrar la producción: ' + error.message);
-        } else {
-            // Reset form
-            setWorkerId('');
-            setInventoryId('');
-            setQuantity('');
-            onLogAdded();
+        if (logError) {
+            console.error('Error logging production:', logError);
+            alert('Error al registrar la producción: ' + logError.message);
+            setIsSubmitting(false);
+            return;
         }
+
+        // 2. Update inventory (increase finished product, decrease raw materials)
+        try {
+            // A. Increase stock of the finished product
+            const { data: currentProductStock, error: productStockError } = await supabase
+                .from('inventory')
+                .select('quantity')
+                .eq('id', producedInventoryId)
+                .single();
+
+            if (productStockError) throw productStockError;
+
+            await supabase
+                .from('inventory')
+                .update({ quantity: currentProductStock.quantity + producedQuantity })
+                .eq('id', producedInventoryId);
+
+            // B. Find the product recipe and decrease raw materials
+            const { data: productData, error: productError } = await supabase
+                .from('products')
+                .select('id')
+                .eq('finished_product_inventory_id', producedInventoryId)
+                .single();
+
+            if (productError) {
+                console.warn(`No recipe found for inventory item ${producedInventoryId}. Only product stock was updated.`);
+            } else if (productData) {
+                const { data: recipeItems, error: recipeError } = await supabase
+                    .from('product_recipes')
+                    .select('*')
+                    .eq('product_id', productData.id);
+                
+                if (recipeError) throw recipeError;
+
+                // Create a transaction of updates for raw materials
+                const updatePromises = recipeItems.map(async (item) => {
+                    const requiredQty = item.quantity_required * producedQuantity;
+                    const { data: material, error: materialError } = await supabase
+                        .from('inventory')
+                        .select('quantity')
+                        .eq('id', item.raw_material_inventory_id)
+                        .single();
+                    
+                    if (materialError) throw materialError;
+
+                    return supabase
+                        .from('inventory')
+                        .update({ quantity: material.quantity - requiredQty })
+                        .eq('id', item.raw_material_inventory_id);
+                });
+
+                await Promise.all(updatePromises);
+            }
+            alert("¡Producción registrada y stock actualizado con éxito!");
+        } catch(inventoryError: any) {
+            console.error("Error updating inventory:", inventoryError);
+            alert("Producción registrada, pero hubo un error al actualizar el stock: " + inventoryError.message);
+        }
+
+        // 3. Reset form and refresh data
+        setWorkerId('');
+        setInventoryId('');
+        setQuantity('');
+        onLogAdded();
         setIsSubmitting(false);
     };
     
@@ -103,7 +167,7 @@ const ProductionLogView: React.FC = () => {
                 .limit(100);
 
             const workersPromise = supabase.from('workers').select('*').order('name');
-            const productsPromise = supabase.from('inventory').select('*').eq('type', 'Producto Terminado').order('name');
+            const productsPromise = supabase.from('inventory').select('*').order('name');
             
             const [
                 logsResult,
@@ -147,7 +211,7 @@ const ProductionLogView: React.FC = () => {
     }, []);
 
     const handleDelete = async (logId: number) => {
-        if (!window.confirm("¿Estás seguro de que quieres eliminar este registro?")) return;
+        if (!window.confirm("¿Estás seguro de que quieres eliminar este registro? Esta acción NO revierte los cambios de stock.")) return;
 
         const { error } = await supabase.from('production_log').delete().eq('id', logId);
         
@@ -160,14 +224,14 @@ const ProductionLogView: React.FC = () => {
     };
 
     const groupedLogs = useMemo(() => {
-        return logs.reduce((acc: Record<string, EnrichedProductionLog[]>, log) => {
+        return logs.reduce((acc, log) => {
             const date = log.production_date;
             if (!acc[date]) {
                 acc[date] = [];
             }
             acc[date].push(log);
             return acc;
-        }, {});
+        }, {} as Record<string, EnrichedProductionLog[]>);
     }, [logs]);
 
     return (
