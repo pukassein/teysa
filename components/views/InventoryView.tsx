@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { InventoryItem, Brand } from '../../types';
+import type { InventoryItem, Brand, InventoryMovement } from '../../types';
 import Card from '../ui/Card';
 import { supabase } from '../../supabaseClient';
 import Badge from '../ui/Badge';
 import SearchIcon from '../icons/SearchIcon';
+import UndoIcon from '../icons/UndoIcon';
 
 const brandOptions: Brand[] = ['Duramaxi', 'Avanty', 'Diletta', 'Generica'];
 
@@ -186,18 +187,39 @@ const StockMovementForm: React.FC<{
             return;
         }
 
-        const { error } = await supabase
+        // 1. Log the movement
+        const { data: movementData, error: movementError } = await supabase
+            .from('inventory_movements')
+            .insert({
+                inventory_id: selectedItem.id,
+                quantity_change: movementType === 'Salida' ? -quantityChange : quantityChange,
+                type: movementType,
+                reason: reason,
+            })
+            .select()
+            .single();
+
+        if (movementError) {
+            alert('Error al registrar el movimiento: ' + movementError.message);
+            setIsSubmitting(false);
+            return;
+        }
+
+        // 2. Update the stock
+        const { error: updateError } = await supabase
             .from('inventory')
             .update({ quantity: newQuantity })
             .eq('id', itemId);
 
-        if (error) {
-            console.error('Error updating stock:', error);
-            alert('Error al actualizar el stock: ' + error.message);
+        if (updateError) {
+            alert('El movimiento fue registrado, pero el stock no pudo ser actualizado. Error: ' + updateError.message);
+            // Attempt to roll back the movement log for consistency
+            if (movementData) {
+                await supabase.from('inventory_movements').delete().eq('id', movementData.id);
+                alert('Se ha revertido el registro del movimiento. Por favor, intente de nuevo.');
+            }
         } else {
-            // In a real app, you'd also log this movement to a separate table
-            // console.log(`Movement logged: ${movementType} of ${quantity} for item ${itemId}. Reason: ${reason}`);
-            alert('¡Stock actualizado con éxito!');
+            alert('¡Stock y movimiento registrados con éxito!');
             onSave();
             onCancel();
         }
@@ -286,6 +308,133 @@ const InventoryRow: React.FC<{ item: InventoryItem; onEdit: (item: InventoryItem
 };
 
 
+type EnrichedInventoryMovement = InventoryMovement & {
+    inventory: { name: string; unit: string } | null;
+};
+
+const MovementHistory: React.FC<{ items: InventoryItem[]; onDataNeedsRefresh: () => void; }> = ({ items, onDataNeedsRefresh }) => {
+    const [movements, setMovements] = useState<EnrichedInventoryMovement[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetchMovements();
+    }, [items]);
+
+    const fetchMovements = async () => {
+        setLoading(true);
+        const { data, error } = await supabase
+            .from('inventory_movements')
+            .select('*, inventory(name, unit)')
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+        if (error) {
+            console.error('Error fetching movements:', error);
+            alert('No se pudo cargar el historial de movimientos. Verifique que la relación entre "inventory_movements" y "inventory" esté bien configurada en Supabase.');
+        } else if (data) {
+            setMovements(data as EnrichedInventoryMovement[]);
+        }
+        setLoading(false);
+    };
+
+    const handleCancelMovement = async (movement: EnrichedInventoryMovement) => {
+        if (movement.is_cancelled) return;
+        if (!window.confirm('¿Seguro que quieres cancelar este movimiento? Esto ajustará el stock actual del artículo.')) return;
+
+        const itemToUpdate = items.find(i => i.id === movement.inventory_id);
+        if (!itemToUpdate) {
+            alert('Error: No se pudo encontrar el artículo de inventario asociado a este movimiento.');
+            return;
+        }
+
+        // The quantity to revert to
+        const revertedQuantity = itemToUpdate.quantity - movement.quantity_change;
+
+        // 1. Update the stock first
+        const { error: stockError } = await supabase
+            .from('inventory')
+            .update({ quantity: revertedQuantity })
+            .eq('id', movement.inventory_id);
+        
+        if (stockError) {
+            alert('Error al revertir el stock: ' + stockError.message);
+            return;
+        }
+        
+        // 2. Mark the movement as cancelled
+        const { error: movementError } = await supabase
+            .from('inventory_movements')
+            .update({ is_cancelled: true })
+            .eq('id', movement.id);
+        
+        if (movementError) {
+            alert('El stock fue revertido, pero no se pudo marcar el movimiento como cancelado. Contacte a soporte. Error: ' + movementError.message);
+            // Attempt to revert the stock change back to its incorrect state to maintain consistency
+            await supabase.from('inventory').update({ quantity: itemToUpdate.quantity }).eq('id', itemToUpdate.id);
+        } else {
+            alert('Movimiento cancelado y stock ajustado con éxito.');
+            onDataNeedsRefresh(); // This will refresh both inventory and movements
+        }
+    };
+
+    if (loading) return <p className="text-center text-gray-500 py-4">Cargando historial...</p>;
+
+    return (
+        <Card title="Historial de Movimientos de Stock">
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-500">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th scope="col" className="p-4">Fecha</th>
+                            <th scope="col" className="p-4">Artículo</th>
+                            <th scope="col" className="p-4 text-center">Cambio</th>
+                            <th scope="col" className="p-4">Razón</th>
+                            <th scope="col" className="p-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {movements.map(m => (
+                            <tr key={m.id} className={`border-b hover:bg-gray-50 ${m.is_cancelled ? 'bg-gray-100 text-gray-400' : ''}`}>
+                                <td className="p-4 whitespace-nowrap">
+                                    {new Date(m.created_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}
+                                </td>
+                                <td className={`p-4 font-semibold ${m.is_cancelled ? '' : 'text-gray-800'}`}>
+                                    {m.inventory?.name || 'Artículo eliminado'}
+                                </td>
+                                <td className="p-4 text-center font-mono">
+                                    <span className={m.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}>
+                                        {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}
+                                    </span>
+                                    <span className={`ml-1 ${m.is_cancelled ? '' : 'text-gray-500'}`}>{m.inventory?.unit}</span>
+                                </td>
+                                <td className={`p-4 italic ${m.is_cancelled ? '' : 'text-gray-600'}`}>
+                                    {m.reason || '-'}
+                                </td>
+                                <td className="p-4 text-right">
+                                    {m.is_cancelled ? (
+                                        <span className="text-xs font-semibold">CANCELADO</span>
+                                    ) : (
+                                        <button 
+                                            onClick={() => handleCancelMovement(m)} 
+                                            className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-md hover:bg-yellow-200 text-xs font-medium transition flex items-center space-x-1 ml-auto"
+                                            aria-label="Cancelar movimiento"
+                                        >
+                                            <UndoIcon className="w-4 h-4" />
+                                            <span>Cancelar</span>
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                {movements.length === 0 && <p className="text-center text-gray-500 py-6">No hay movimientos registrados.</p>}
+            </div>
+        </Card>
+    );
+};
+
+
 const InventoryView: React.FC = () => {
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -294,6 +443,7 @@ const InventoryView: React.FC = () => {
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [brandFilter, setBrandFilter] = useState<'all' | Brand>('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeTab, setActiveTab] = useState<'stock' | 'history'>('stock');
 
     useEffect(() => {
         fetchInventory();
@@ -312,25 +462,69 @@ const InventoryView: React.FC = () => {
     };
 
     const handleAddItem = async (newItemData: Omit<InventoryItem, 'id'>) => {
-        const { data, error } = await supabase.from('inventory').insert(newItemData).select();
+        const { data, error } = await supabase.from('inventory').insert(newItemData).select().single();
         if (error) {
             console.error('Error adding item:', error.message);
             alert(`Error al añadir artículo: ${error.message}`);
         } else if (data) {
-            setItems(currentItems => [...currentItems, data[0] as InventoryItem].sort((a,b) => a.name.localeCompare(b.name)));
+            const newItem = data as InventoryItem;
+            // If the new item has an initial quantity, log it as a movement.
+            if (newItem.quantity > 0) {
+                const { error: movementError } = await supabase.from('inventory_movements').insert({
+                    inventory_id: newItem.id,
+                    quantity_change: newItem.quantity,
+                    type: 'Entrada',
+                    reason: 'Stock Inicial (Creación de artículo)',
+                });
+                if (movementError) {
+                    alert('El artículo fue creado, pero no se pudo registrar el movimiento inicial en el historial.');
+                    console.error('Error logging initial movement:', movementError);
+                }
+            }
+            setItems(currentItems => [...currentItems, newItem].sort((a,b) => a.name.localeCompare(b.name)));
             setShowAddForm(false);
         }
     };
 
-    const handleUpdateItem = async (updatedItem: InventoryItem) => {
-        const { data, error } = await supabase.from('inventory').update(updatedItem).eq('id', updatedItem.id).select();
-         if (error) {
-            console.error('Error updating item:', error.message);
-            alert(`Error al actualizar artículo: ${error.message}`);
-        } else if (data) {
-            setItems(currentItems => currentItems.map(item => item.id === updatedItem.id ? data[0] as InventoryItem : item));
-            setEditingItem(null);
+    const handleUpdateItem = async (updatedItemData: InventoryItem) => {
+        const originalItem = items.find(item => item.id === updatedItemData.id);
+        if (!originalItem) {
+            alert('Error: No se encontró el artículo original para actualizar.');
+            return;
         }
+        const quantityChange = updatedItemData.quantity - originalItem.quantity;
+
+        // Create a payload with only the updatable fields, excluding the ID.
+        const { id, ...updatePayload } = updatedItemData;
+
+        const { error: updateError } = await supabase
+            .from('inventory')
+            .update(updatePayload)
+            .eq('id', id);
+        
+        if (updateError) {
+            console.error('Error updating item:', updateError.message);
+            alert(`Error al actualizar artículo: ${updateError.message}`);
+            return; // Exit without changing UI if DB update fails.
+        }
+
+        // If DB update succeeds, then log the movement and update the local UI state.
+        if (quantityChange !== 0) {
+            const { error: movementError } = await supabase.from('inventory_movements').insert({
+                inventory_id: id,
+                quantity_change: quantityChange,
+                type: quantityChange > 0 ? 'Entrada' : 'Salida',
+                reason: 'Ajuste manual desde formulario de edición',
+            });
+            if (movementError) {
+                alert('El artículo fue actualizado, pero no se pudo registrar el cambio en el historial.');
+                console.error('Error logging manual adjustment:', movementError);
+            }
+        }
+
+        // Update local state after all successful DB operations.
+        setItems(currentItems => currentItems.map(item => (item.id === id ? updatedItemData : item)));
+        setEditingItem(null);
     };
     
     const handleDeleteItem = async (id: number) => {
@@ -406,7 +600,7 @@ const InventoryView: React.FC = () => {
 
     return (
         <div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">Control de Inventario</h2>
                 {!isFormOpen && (
                      <div className="flex space-x-2">
@@ -420,27 +614,16 @@ const InventoryView: React.FC = () => {
                 )}
             </div>
             
-            <Card className="mb-6">
-                <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-                    <div className="flex items-center space-x-2 overflow-x-auto pb-2 self-start">
-                        <span className="text-sm font-medium text-gray-600 mr-2 flex-shrink-0">Filtrar por marca:</span>
-                        <FilterButton brand="all" activeFilter={brandFilter} setFilter={setBrandFilter} />
-                        {brandOptions.map(b => <FilterButton key={b} brand={b} activeFilter={brandFilter} setFilter={setBrandFilter} />)}
-                    </div>
-                    <div className="relative w-full md:w-64">
-                        <input
-                            type="text"
-                            placeholder="Buscar artículo..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <SearchIcon className="h-5 w-5 text-gray-400" />
-                        </div>
-                    </div>
-                </div>
-            </Card>
+            <div className="border-b border-gray-200 mb-6">
+                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                    <button onClick={() => setActiveTab('stock')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'stock' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                        Stock Actual
+                    </button>
+                    <button onClick={() => setActiveTab('history')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'history' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                        Historial de Movimientos
+                    </button>
+                </nav>
+            </div>
 
             {showAddForm && <InventoryItemForm onSave={handleAddItem} onCancel={() => setShowAddForm(false)} />}
             {editingItem && <InventoryItemForm item={editingItem} onSave={handleUpdateItem} onCancel={() => setEditingItem(null)} isEdit />}
@@ -449,11 +632,34 @@ const InventoryView: React.FC = () => {
 
             {loading ? (
                 <p className="text-center text-gray-500">Cargando inventario...</p>
-            ) : (
+            ) : activeTab === 'stock' ? (
                 <>
+                    <Card className="mb-6">
+                        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                            <div className="flex items-center space-x-2 overflow-x-auto pb-2 self-start">
+                                <span className="text-sm font-medium text-gray-600 mr-2 flex-shrink-0">Filtrar por marca:</span>
+                                <FilterButton brand="all" activeFilter={brandFilter} setFilter={setBrandFilter} />
+                                {brandOptions.map(b => <FilterButton key={b} brand={b} activeFilter={brandFilter} setFilter={setBrandFilter} />)}
+                            </div>
+                            <div className="relative w-full md:w-64">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar artículo..."
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <SearchIcon className="h-5 w-5 text-gray-400" />
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
                     <InventoryTable title="Materias Primas" items={rawMaterials} />
                     <InventoryTable title="Productos Terminados" items={finishedProducts} />
                 </>
+            ) : (
+                <MovementHistory items={items} onDataNeedsRefresh={fetchInventory} />
             )}
         </div>
     );

@@ -106,3 +106,13 @@ export interface ProductionLog {
   production_date: string; // 'YYYY-MM-DD'
   created_at: string;
 }
+
+export interface InventoryMovement {
+  id: number;
+  created_at: string;
+  inventory_id: number;
+  quantity_change: number; // positive for entry, negative for exit
+  reason?: string;
+  type: 'Entrada' | 'Salida';
+  is_cancelled: boolean;
+}
