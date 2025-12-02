@@ -161,12 +161,52 @@ const WorkersView: React.FC = () => {
     };
 
     const handleDeleteWorker = async (id: number) => {
-        if (window.confirm('¿Estás seguro de que quieres eliminar a este funcionario? Esto desasignará todas sus tareas.')) {
-            const { error } = await supabase.from('workers').delete().eq('id', id);
-            if (error) {
-                console.error('Error deleting worker:', error);
-            } else {
+        if (window.confirm('¿Estás seguro de que quieres eliminar a este funcionario? Esto desasignará todas sus tareas y eliminará su historial de producción.')) {
+            try {
+                // 1. Delete production logs for this worker
+                const { error: logError } = await supabase
+                    .from('production_log')
+                    .delete()
+                    .eq('worker_id', id);
+
+                if (logError) throw logError;
+
+                // 2. Find tasks assigned to this worker
+                const { data: assignedTasks, error: fetchError } = await supabase
+                    .from('tasks')
+                    .select('id, workerIds')
+                    .contains('workerIds', [id]);
+
+                if (fetchError) throw fetchError;
+
+                // 3. Un-assign worker from tasks
+                if (assignedTasks && assignedTasks.length > 0) {
+                    const updates = assignedTasks.map(task => {
+                        const newWorkerIds = task.workerIds.filter(workerId => workerId !== id);
+                        return supabase
+                            .from('tasks')
+                            .update({ workerIds: newWorkerIds })
+                            .eq('id', task.id);
+                    });
+
+                    const updateResults = await Promise.all(updates);
+                    const updateError = updateResults.find(res => res.error);
+
+                    if (updateError) throw updateError.error;
+                }
+
+                // 4. Delete the worker
+                const { error: deleteError } = await supabase.from('workers').delete().eq('id', id);
+
+                if (deleteError) throw deleteError;
+
+                // 5. Update UI
                 setWorkers(currentWorkers => currentWorkers.filter(w => w.id !== id));
+                alert('Funcionario eliminado y dependencias resueltas con éxito.');
+
+            } catch (error: any) {
+                console.error('Error during worker deletion process:', error);
+                alert(`No se pudo eliminar al funcionario. Error: ${error.message}`);
             }
         }
     };
