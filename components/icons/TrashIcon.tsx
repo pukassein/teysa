@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (

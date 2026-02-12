@@ -22,15 +22,22 @@ const ProductionLogForm: React.FC<{
     const [productionDate, setProductionDate] = useState<string>(getTodayString());
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const sanitizedValue = e.target.value.replace(',', '.');
+        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
+            setQuantity(sanitizedValue);
+        }
+    };
+    
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!workerId || !inventoryId || !quantity || !productionDate) {
-            alert('Por favor, complete todos los campos.');
+        if (!workerId || !inventoryId || !quantity || !productionDate || Number(quantity) <= 0) {
+            alert('Por favor, complete todos los campos con valores válidos.');
             return;
         }
 
         setIsSubmitting(true);
-        const producedQuantity = parseInt(quantity);
+        const producedQuantity = Number(quantity);
         const producedInventoryId = parseInt(inventoryId);
 
         // 1. Log the production
@@ -81,24 +88,30 @@ const ProductionLogForm: React.FC<{
                 
                 if (recipeError) throw recipeError;
 
-                // Create a transaction of updates for raw materials
-                const updatePromises = recipeItems.map(async (item) => {
-                    const requiredQty = item.quantity_required * producedQuantity;
-                    const { data: material, error: materialError } = await supabase
-                        .from('inventory')
-                        .select('quantity')
-                        .eq('id', item.raw_material_inventory_id)
-                        .single();
-                    
-                    if (materialError) throw materialError;
+                if (Array.isArray(recipeItems)) {
+                    // Create a transaction of updates for raw materials
+                    const updatePromises = recipeItems.map(async (item) => {
+                        const requiredQty = item.quantity_required * producedQuantity;
+                        const { data: material, error: materialError } = await supabase
+                            .from('inventory')
+                            .select('quantity')
+                            .eq('id', item.raw_material_inventory_id)
+                            .single();
+                        
+                        if (materialError) throw materialError;
 
-                    return supabase
-                        .from('inventory')
-                        .update({ quantity: material.quantity - requiredQty })
-                        .eq('id', item.raw_material_inventory_id);
-                });
+                        if (!material) {
+                            throw new Error(`Material with id ${item.raw_material_inventory_id} not found in inventory.`);
+                        }
 
-                await Promise.all(updatePromises);
+                        return supabase
+                            .from('inventory')
+                            .update({ quantity: material.quantity - requiredQty })
+                            .eq('id', item.raw_material_inventory_id);
+                    });
+
+                    await Promise.all(updatePromises);
+                }
             }
             alert("¡Producción registrada y stock actualizado con éxito!");
         } catch(inventoryError: any) {
@@ -139,7 +152,7 @@ const ProductionLogForm: React.FC<{
                     <div className="grid grid-cols-2 gap-2">
                         <div className="flex-1">
                             <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">Cantidad</label>
-                            <input type="number" id="quantity" value={quantity} onChange={e => setQuantity(e.target.value)} required min="1" placeholder="Ej: 60" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                            <input type="text" inputMode="decimal" id="quantity" value={quantity} onChange={handleQuantityChange} required placeholder="Ej: 60" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                         </div>
                          <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300 self-end">
                             {isSubmitting ? 'Registrando...' : 'Registrar'}

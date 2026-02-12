@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 const MachineIcon: React.FC<{ className?: string }> = ({ className }) => (

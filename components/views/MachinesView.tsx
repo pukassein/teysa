@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { Machine } from '../../types';
 import { MachineStatus } from '../../types';

@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 const SupplierIcon: React.FC<{ className?: string }> = ({ className }) => (

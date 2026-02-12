@@ -1,3 +1,4 @@
+
 export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders' | 'suppliers' | 'productionLog';
 
 export enum TaskStatus {

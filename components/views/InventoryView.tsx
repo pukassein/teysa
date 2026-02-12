@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { InventoryItem, Brand, InventoryMovement } from '../../types';
 import Card from '../ui/Card';
@@ -48,10 +49,22 @@ const InventoryItemForm: React.FC<{
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value,
-        }));
+        if (name === 'quantity' || name === 'low_stock_threshold') {
+            const sanitizedValue = value.replace(',', '.');
+            // Regex to match a valid decimal number format.
+            // Allows empty string, a single dot, numbers, and numbers with one dot.
+            if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: sanitizedValue,
+                }));
+            }
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                [name]: value,
+            }));
+        }
     };
 
     const handleUnitSelectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -106,11 +119,11 @@ const InventoryItemForm: React.FC<{
                     </div>
                     <div>
                         <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">Cantidad</label>
-                        <input type="number" name="quantity" id="quantity" value={formData.quantity} onChange={handleChange} placeholder="0" min="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                        <input type="text" inputMode="decimal" name="quantity" id="quantity" value={formData.quantity} onChange={handleChange} placeholder="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
                     </div>
                     <div>
                         <label htmlFor="low_stock_threshold" className="block text-sm font-medium text-gray-700">Umbral Stock Bajo</label>
-                        <input type="number" name="low_stock_threshold" id="low_stock_threshold" value={formData.low_stock_threshold} onChange={handleChange} placeholder="0" min="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                        <input type="text" inputMode="decimal" name="low_stock_threshold" id="low_stock_threshold" value={formData.low_stock_threshold} onChange={handleChange} placeholder="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
                     </div>
                     <div className="md:col-span-2 lg:col-span-1">
                         <div className="grid grid-cols-2 gap-2 items-end">
@@ -160,6 +173,13 @@ const StockMovementForm: React.FC<{
     const [quantity, setQuantity] = useState<string>('');
     const [reason, setReason] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const sanitizedValue = e.target.value.replace(',', '.');
+        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
+            setQuantity(sanitizedValue);
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -246,7 +266,7 @@ const StockMovementForm: React.FC<{
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700">Cantidad</label>
-                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} required min="1" placeholder="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                        <input type="text" inputMode="decimal" value={quantity} onChange={handleQuantityChange} required placeholder="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
                     </div>
                 </div>
                  <div>

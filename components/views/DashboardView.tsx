@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { PRODUCTION_GOALS } from '../../constants';
 import { TaskStatus, type Task, type ProductionGoal, type Worker, type TaskComment } from '../../types';

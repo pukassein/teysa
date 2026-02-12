@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import type { Task, Worker } from '../../types';
 import { TaskStatus } from '../../types';
@@ -104,13 +105,13 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
     
     const [editedFields, setEditedFields] = useState({
         title: task.title,
-        estimatedTime: task.estimatedTime,
+        estimatedTime: task.estimatedTime.toString(),
     });
 
     useEffect(() => {
         setEditedFields({
             title: task.title,
-            estimatedTime: task.estimatedTime,
+            estimatedTime: task.estimatedTime.toString(),
         });
     }, [task, isEditing]);
 
@@ -126,14 +127,21 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
 
     const handleFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setEditedFields(prev => ({
-            ...prev,
-            [name]: name === 'estimatedTime' ? parseFloat(value) || 0 : value,
-        }));
+        if (name === 'estimatedTime') {
+            const sanitizedValue = value.replace(',', '.');
+            if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
+                setEditedFields(prev => ({ ...prev, estimatedTime: sanitizedValue }));
+            }
+        } else {
+            setEditedFields(prev => ({ ...prev, [name]: value }));
+        }
     };
 
     const handleSave = () => {
-        onUpdateTask(task.id, editedFields);
+        onUpdateTask(task.id, {
+            ...editedFields,
+            estimatedTime: Number(editedFields.estimatedTime) || 0,
+        });
     };
     
     const handleWorkersChange = (workerId: number) => {
@@ -181,11 +189,11 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
                              </div>
                              <div>
                                 <label className="text-xs font-medium text-gray-500">Tiempo Est. (hrs)</label>
-                                <input type="number" name="estimatedTime" value={editedFields.estimatedTime} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                                <input type="text" inputMode="decimal" name="estimatedTime" value={editedFields.estimatedTime} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                                 <TimeRangeCalculator onDurationCalculated={(hours) => {
                                     setEditedFields(prev => ({
                                         ...prev,
-                                        estimatedTime: parseFloat(hours.toFixed(2))
+                                        estimatedTime: hours.toFixed(2)
                                     }));
                                 }} />
                              </div>
@@ -298,6 +306,13 @@ const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'i
         );
     };
 
+    const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const sanitizedValue = e.target.value.replace(',', '.');
+        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
+            setEstimatedTime(sanitizedValue);
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!title.trim() || !estimatedTime) return;
@@ -321,7 +336,7 @@ const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'i
                     </div>
                     <div>
                         <label htmlFor="estimatedTime" className="block text-sm font-medium text-gray-700">Tiempo Estimado (horas)</label>
-                        <input type="number" id="estimatedTime" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} required min="0" step="0.5" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                        <input type="text" inputMode="decimal" id="estimatedTime" value={estimatedTime} onChange={handleTimeChange} required placeholder="Ej: 4.5" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                         <TimeRangeCalculator onDurationCalculated={(hours) => setEstimatedTime(hours.toFixed(2))} />
                     </div>
                      <div>

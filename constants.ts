@@ -1,3 +1,4 @@
+
 import { TaskStatus, MachineStatus, type Worker, type Task, type ProductionGoal, type InventoryItem, type Machine } from './types';
 
 export const WORKERS: Worker[] = [

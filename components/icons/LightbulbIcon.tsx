@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 const LightbulbIcon: React.FC<{ className?: string }> = ({ className }) => (

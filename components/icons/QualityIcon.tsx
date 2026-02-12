@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 const QualityIcon: React.FC<{ className?: string }> = ({ className }) => (

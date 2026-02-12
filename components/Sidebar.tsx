@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { View } from '../types';
 import DashboardIcon from './icons/DashboardIcon';

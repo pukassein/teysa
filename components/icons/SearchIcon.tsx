@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (

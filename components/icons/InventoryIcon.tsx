@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 const InventoryIcon: React.FC<{ className?: string }> = ({ className }) => (

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import type { InventoryItem, Product, ProductRecipe, ProductionOrder } from '../../types';
@@ -18,8 +19,15 @@ const OrderModal: React.FC<{
     onOrderCreated: () => void;
 }> = ({ products, inventory, recipes, onClose, onOrderCreated }) => {
     const [selectedProductId, setSelectedProductId] = useState<number | ''>('');
-    const [quantity, setQuantity] = useState(1);
+    const [quantity, setQuantity] = useState('1');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const sanitizedValue = e.target.value.replace(',', '.');
+        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
+            setQuantity(sanitizedValue);
+        }
+    };
 
     const { requiredMaterials, sufficientStock, hasRecipe } = useMemo(() => {
         if (!selectedProductId) return { requiredMaterials: [], sufficientStock: true, hasRecipe: false };
@@ -30,10 +38,11 @@ const OrderModal: React.FC<{
         }
 
         let allStockSufficient = true;
+        const currentQuantity = Number(quantity) || 0;
 
         const materials = productRecipes.map(recipe => {
             const materialInfo = inventory.find(i => i.id === recipe.raw_material_inventory_id);
-            const required = recipe.quantity_required * quantity;
+            const required = recipe.quantity_required * currentQuantity;
             const available = materialInfo?.quantity || 0;
             const hasEnough = available >= required;
             
@@ -53,12 +62,13 @@ const OrderModal: React.FC<{
     
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedProductId || quantity <= 0 || !sufficientStock || !hasRecipe) return;
+        const numericQuantity = Number(quantity);
+        if (!selectedProductId || numericQuantity <= 0 || !sufficientStock || !hasRecipe) return;
         
         setIsSubmitting(true);
         const { error } = await supabase.from('production_orders').insert({
             product_id: selectedProductId,
-            quantity_to_produce: quantity,
+            quantity_to_produce: numericQuantity,
             status: 'Pendiente',
         });
         setIsSubmitting(false);
@@ -88,7 +98,7 @@ const OrderModal: React.FC<{
                             </div>
                             <div>
                                 <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">Cantidad a Producir</label>
-                                <input type="number" id="quantity" value={quantity} onChange={e => setQuantity(Math.max(1, Number(e.target.value)))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" min="1" required/>
+                                <input type="text" inputMode="decimal" id="quantity" value={quantity} onChange={handleQuantityChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" required/>
                             </div>
                         </div>
                         {selectedProductId && (
@@ -130,6 +140,13 @@ const AddIngredientForm: React.FC<{
     const [materialId, setMaterialId] = useState<number | ''>('');
     const [quantity, setQuantity] = useState('');
 
+    const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const sanitizedValue = e.target.value.replace(',', '.');
+        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
+            setQuantity(sanitizedValue);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!materialId || Number(quantity) <= 0) return;
@@ -160,7 +177,7 @@ const AddIngredientForm: React.FC<{
             </div>
             <div className="sm:col-span-2">
                  <label className="block text-xs font-medium text-gray-600">Cantidad Req.</label>
-                <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="0.0001" step="0.0001" placeholder="0.0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md text-sm" required />
+                <input type="text" inputMode="decimal" value={quantity} onChange={handleQuantityChange} placeholder="0.0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md text-sm" required />
             </div>
             <button type="submit" className="sm:col-span-1 px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition text-sm flex items-center justify-center space-x-2 h-10">
                 <PlusIcon className="w-4 h-4" />
