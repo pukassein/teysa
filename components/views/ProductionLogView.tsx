@@ -21,6 +21,21 @@ const ProductionLogForm: React.FC<{
     const [quantity, setQuantity] = useState<string>('');
     const [productionDate, setProductionDate] = useState<string>(getTodayString());
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [inputUnit, setInputUnit] = useState<string>('unidades');
+
+    const selectedProduct = useMemo(() => products.find(p => p.id === Number(inventoryId)), [products, inventoryId]);
+
+    // Update input unit when product changes to match product's unit if applicable, or default to units
+    useEffect(() => {
+        if (selectedProduct) {
+            const unit = selectedProduct.unit.toLowerCase();
+            if (unit === 'unidades' || unit === 'docenas') {
+                setInputUnit(unit);
+            } else {
+                setInputUnit(unit);
+            }
+        }
+    }, [selectedProduct]);
 
     const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const sanitizedValue = e.target.value.replace(',', '.');
@@ -37,8 +52,18 @@ const ProductionLogForm: React.FC<{
         }
 
         setIsSubmitting(true);
-        const producedQuantity = Number(quantity);
+        let producedQuantity = Number(quantity);
         const producedInventoryId = parseInt(inventoryId);
+
+        // Convert quantity if necessary
+        if (selectedProduct) {
+            const productUnit = selectedProduct.unit.toLowerCase();
+            if (inputUnit === 'docenas' && productUnit === 'unidades') {
+                producedQuantity = producedQuantity * 12;
+            } else if (inputUnit === 'unidades' && productUnit === 'docenas') {
+                producedQuantity = producedQuantity / 12;
+            }
+        }
 
         // 1. Log the production
         const { error: logError } = await supabase.from('production_log').insert({
@@ -170,7 +195,32 @@ const ProductionLogForm: React.FC<{
                     <div className="grid grid-cols-2 gap-2">
                         <div className="flex-1">
                             <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">Cantidad</label>
-                            <input type="text" inputMode="decimal" id="quantity" value={quantity} onChange={handleQuantityChange} required placeholder="Ej: 60" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                            <div className="flex mt-1 rounded-md shadow-sm">
+                                <input 
+                                    type="text" 
+                                    inputMode="decimal" 
+                                    id="quantity" 
+                                    value={quantity} 
+                                    onChange={handleQuantityChange} 
+                                    required 
+                                    placeholder="Ej: 60" 
+                                    className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-l-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                />
+                                {selectedProduct && (selectedProduct.unit.toLowerCase() === 'unidades' || selectedProduct.unit.toLowerCase() === 'docenas') ? (
+                                    <select
+                                        value={inputUnit}
+                                        onChange={(e) => setInputUnit(e.target.value)}
+                                        className="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm rounded-r-md hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                        <option value="unidades">Unidades</option>
+                                        <option value="docenas">Docenas</option>
+                                    </select>
+                                ) : (
+                                    <span className="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 bg-gray-100 text-gray-500 sm:text-sm rounded-r-md">
+                                        {selectedProduct?.unit || 'Unidad'}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                          <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300 self-end">
                             {isSubmitting ? 'Registrando...' : 'Registrar'}

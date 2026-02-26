@@ -96,6 +96,9 @@ const InventoryItemForm: React.FC<{
         onSave(isEdit ? { ...item, ...itemData } : itemData);
     };
 
+    const quantityInDozens = (Number(formData.quantity) || 0) / 12;
+    const showDozensConversion = unitState.selection === 'unidades';
+
     return (
         <Card title={isEdit ? `Editando: ${item?.name}` : 'Añadir Nuevo Artículo'} className="mb-6">
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -120,6 +123,11 @@ const InventoryItemForm: React.FC<{
                     <div>
                         <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">Cantidad</label>
                         <input type="text" inputMode="decimal" name="quantity" id="quantity" value={formData.quantity} onChange={handleChange} placeholder="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                        {showDozensConversion && formData.quantity && (
+                            <p className="text-xs text-blue-600 mt-1 font-medium">
+                                Equivalente a: {quantityInDozens.toFixed(2)} docenas
+                            </p>
+                        )}
                     </div>
                     <div>
                         <label htmlFor="low_stock_threshold" className="block text-sm font-medium text-gray-700">Umbral Stock Bajo</label>
@@ -294,6 +302,22 @@ const getBrandColor = (brand: Brand): 'blue' | 'green' | 'yellow' | 'gray' => {
 
 const InventoryRow: React.FC<{ item: InventoryItem; onEdit: (item: InventoryItem) => void; onDelete: (id: number) => void; }> = ({ item, onEdit, onDelete }) => {
     const isLowStock = item.quantity < item.low_stock_threshold;
+    
+    const unitLower = item.unit.toLowerCase();
+    
+    let displayQuantity = item.quantity;
+    let displayUnit = item.unit;
+    let quantityInDozens = '-';
+
+    if (unitLower === 'unidades') {
+        quantityInDozens = (item.quantity / 12).toFixed(2);
+    } else if (unitLower === 'docenas') {
+        // Convert base dozens to units for display in first column
+        displayQuantity = item.quantity * 12;
+        displayUnit = 'unidades'; 
+        quantityInDozens = item.quantity.toFixed(2);
+    }
+
     return (
         <tr className={`border-b ${isLowStock ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}>
             <td className="p-4">
@@ -307,9 +331,12 @@ const InventoryRow: React.FC<{ item: InventoryItem; onEdit: (item: InventoryItem
             </td>
             <td className="p-4 text-center">
                 <span className={`font-mono text-lg ${isLowStock ? 'text-red-600 font-bold' : 'text-gray-700'}`}>
-                    {item.quantity}
+                    {displayQuantity}
                 </span>
-                <span className="text-sm text-gray-500 ml-1">{item.unit}</span>
+                <span className="text-sm text-gray-500 ml-1">{displayUnit}</span>
+            </td>
+            <td className="p-4 text-center font-mono text-gray-700">
+                {quantityInDozens}
             </td>
             <td className="p-4 text-center text-gray-600 font-mono">{item.low_stock_threshold}</td>
             <td className="p-4 text-center">
@@ -587,6 +614,7 @@ const InventoryView: React.FC = () => {
                             <tr>
                                 <th scope="col" className="p-4">Nombre</th>
                                 <th scope="col" className="p-4 text-center">Cantidad Actual</th>
+                                <th scope="col" className="p-4 text-center">En Docenas</th>
                                 <th scope="col" className="p-4 text-center">Alerta de Stock Bajo</th>
                                 <th scope="col" className="p-4 text-center">Estado</th>
                                 <th scope="col" className="p-4 text-right">Acciones</th>
