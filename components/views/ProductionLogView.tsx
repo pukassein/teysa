@@ -9,6 +9,8 @@ type EnrichedProductionLog = ProductionLog & {
     inventory: { name: string, unit: string } | null;
 };
 
+import SearchableSelect from '../ui/SearchableSelect';
+
 const ProductionLogForm: React.FC<{
     workers: Worker[];
     products: InventoryItem[];
@@ -18,52 +20,71 @@ const ProductionLogForm: React.FC<{
 
     const [workerId, setWorkerId] = useState<string>('');
     const [inventoryId, setInventoryId] = useState<string>('');
-    const [quantity, setQuantity] = useState<string>('');
+    const [quantityUnits, setQuantityUnits] = useState<string>('');
+    const [quantityDozens, setQuantityDozens] = useState<string>('');
     const [productionDate, setProductionDate] = useState<string>(getTodayString());
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [inputUnit, setInputUnit] = useState<string>('unidades');
 
     const selectedProduct = useMemo(() => products.find(p => p.id === Number(inventoryId)), [products, inventoryId]);
 
-    // Update input unit when product changes to match product's unit if applicable, or default to units
+    // Reset inputs when product changes
     useEffect(() => {
-        if (selectedProduct) {
-            const unit = selectedProduct.unit.toLowerCase();
-            if (unit === 'unidades' || unit === 'docenas') {
-                setInputUnit(unit);
-            } else {
-                setInputUnit(unit);
-            }
-        }
+        setQuantityUnits('');
+        setQuantityDozens('');
     }, [selectedProduct]);
 
-    const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const sanitizedValue = e.target.value.replace(',', '.');
-        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
-            setQuantity(sanitizedValue);
+    const handleUnitsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value.replace(',', '.');
+        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+            setQuantityUnits(val);
+            if (val === '') {
+                setQuantityDozens('');
+            } else {
+                const num = parseFloat(val);
+                if (!isNaN(num)) {
+                    const doz = num / 12;
+                    setQuantityDozens(Number.isInteger(doz) ? doz.toString() : doz.toFixed(2));
+                }
+            }
+        }
+    };
+
+    const handleDozensChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value.replace(',', '.');
+        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+            setQuantityDozens(val);
+            if (val === '') {
+                setQuantityUnits('');
+            } else {
+                const num = parseFloat(val);
+                if (!isNaN(num)) {
+                    const units = num * 12;
+                    setQuantityUnits(Number.isInteger(units) ? units.toString() : units.toFixed(2));
+                }
+            }
         }
     };
     
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!workerId || !inventoryId || !quantity || !productionDate || Number(quantity) <= 0) {
+        
+        let producedQuantity = 0;
+        if (selectedProduct) {
+            const productUnit = selectedProduct.unit.toLowerCase();
+            if (productUnit === 'docenas') {
+                producedQuantity = parseFloat(quantityDozens);
+            } else {
+                producedQuantity = parseFloat(quantityUnits);
+            }
+        }
+
+        if (!workerId || !inventoryId || !productionDate || isNaN(producedQuantity) || producedQuantity <= 0) {
             alert('Por favor, complete todos los campos con valores válidos.');
             return;
         }
 
         setIsSubmitting(true);
-        let producedQuantity = Number(quantity);
         const producedInventoryId = parseInt(inventoryId);
-
-        // Convert quantity if necessary
-        if (selectedProduct) {
-            const productUnit = selectedProduct.unit.toLowerCase();
-            if (inputUnit === 'docenas' && productUnit === 'unidades') {
-                producedQuantity = producedQuantity * 12;
-            } else if (inputUnit === 'unidades' && productUnit === 'docenas') {
-                producedQuantity = producedQuantity / 12;
-            }
-        }
 
         // 1. Log the production
         const { error: logError } = await supabase.from('production_log').insert({
@@ -165,67 +186,101 @@ const ProductionLogForm: React.FC<{
         // 3. Reset form and refresh data
         setWorkerId('');
         setInventoryId('');
-        setQuantity('');
+        setQuantityUnits('');
+        setQuantityDozens('');
         onLogAdded();
         setIsSubmitting(false);
     };
+
+    const productOptions = useMemo(() => products.map(p => ({
+        id: p.id,
+        label: p.name,
+        subLabel: `${p.brand} - ${p.unit}`
+    })), [products]);
     
+    // Always show dual inputs unless it's a unit that doesn't make sense (like kg/m), 
+    // but for now we default to showing them to meet the request "make it always show".
+    const isStandardUnit = !selectedProduct || ['unidades', 'docenas'].includes(selectedProduct.unit.toLowerCase());
+
     return (
         <Card title="Registrar Producción Diaria" className="mb-6">
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                     <div>
-                        <label htmlFor="production_date" className="block text-sm font-medium text-gray-700">Fecha</label>
-                        <input type="date" id="production_date" value={productionDate} onChange={e => setProductionDate(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                        <label htmlFor="production_date" className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                        <input type="date" id="production_date" value={productionDate} onChange={e => setProductionDate(e.target.value)} required className="block w-full p-2 border border-gray-300 rounded-md"/>
                     </div>
                     <div>
-                        <label htmlFor="worker" className="block text-sm font-medium text-gray-700">Funcionario</label>
-                        <select id="worker" value={workerId} onChange={e => setWorkerId(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                        <label htmlFor="worker" className="block text-sm font-medium text-gray-700 mb-1">Funcionario</label>
+                        <select id="worker" value={workerId} onChange={e => setWorkerId(e.target.value)} required className="block w-full p-2 border border-gray-300 rounded-md">
                             <option value="" disabled>Seleccionar...</option>
                             {workers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label htmlFor="product" className="block text-sm font-medium text-gray-700">Producto</label>
-                        <select id="product" value={inventoryId} onChange={e => setInventoryId(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-                             <option value="" disabled>Seleccionar...</option>
-                             {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
+                        <label htmlFor="product" className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
+                        <SearchableSelect 
+                            options={productOptions}
+                            value={inventoryId}
+                            onChange={setInventoryId}
+                            placeholder="Buscar producto..."
+                        />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                        <div className="flex-1">
-                            <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">Cantidad</label>
-                            <div className="flex mt-1 rounded-md shadow-sm">
-                                <input 
-                                    type="text" 
-                                    inputMode="decimal" 
-                                    id="quantity" 
-                                    value={quantity} 
-                                    onChange={handleQuantityChange} 
-                                    required 
-                                    placeholder="Ej: 60" 
-                                    className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-l-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                />
-                                {selectedProduct && (selectedProduct.unit.toLowerCase() === 'unidades' || selectedProduct.unit.toLowerCase() === 'docenas') ? (
-                                    <select
-                                        value={inputUnit}
-                                        onChange={(e) => setInputUnit(e.target.value)}
-                                        className="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm rounded-r-md hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="unidades">Unidades</option>
-                                        <option value="docenas">Docenas</option>
-                                    </select>
-                                ) : (
-                                    <span className="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 bg-gray-100 text-gray-500 sm:text-sm rounded-r-md">
-                                        {selectedProduct?.unit || 'Unidad'}
-                                    </span>
-                                )}
-                            </div>
+                        <div className="flex-1 col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                            {isStandardUnit ? (
+                                <div className="flex space-x-2">
+                                    <div className="flex-1">
+                                        <label className="block text-xs text-gray-500 mb-1">Unidades</label>
+                                        <div className="relative rounded-md shadow-sm">
+                                            <input 
+                                                type="text" 
+                                                inputMode="decimal" 
+                                                value={quantityUnits} 
+                                                onChange={handleUnitsChange} 
+                                                placeholder="0" 
+                                                className="block w-full border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="block text-xs text-gray-500 mb-1">Docenas</label>
+                                        <div className="relative rounded-md shadow-sm">
+                                            <input 
+                                                type="text" 
+                                                inputMode="decimal" 
+                                                value={quantityDozens} 
+                                                onChange={handleDozensChange} 
+                                                placeholder="0" 
+                                                className="block w-full border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="relative rounded-md shadow-sm">
+                                    <input 
+                                        type="text" 
+                                        inputMode="decimal" 
+                                        value={quantityUnits} 
+                                        onChange={handleUnitsChange} 
+                                        required 
+                                        placeholder="Ej: 60" 
+                                        className="block w-full pr-16 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
+                                    />
+                                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                        <span className="text-gray-500 sm:text-sm">{selectedProduct?.unit || 'Unidad'}</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                         <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300 self-end">
-                            {isSubmitting ? 'Registrando...' : 'Registrar'}
-                        </button>
                     </div>
+                </div>
+                <div className="flex justify-end pt-2">
+                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300">
+                        {isSubmitting ? 'Registrando...' : 'Registrar'}
+                    </button>
                 </div>
             </form>
         </Card>

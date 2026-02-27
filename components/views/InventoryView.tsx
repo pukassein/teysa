@@ -171,6 +171,8 @@ const InventoryItemForm: React.FC<{
     );
 };
 
+import SearchableSelect from '../ui/SearchableSelect';
+
 const StockMovementForm: React.FC<{
     items: InventoryItem[];
     onSave: () => void;
@@ -178,33 +180,74 @@ const StockMovementForm: React.FC<{
 }> = ({ items, onSave, onCancel }) => {
     const [itemId, setItemId] = useState<string>('');
     const [movementType, setMovementType] = useState<'Salida' | 'Entrada'>('Salida');
-    const [quantity, setQuantity] = useState<string>('');
+    const [quantityUnits, setQuantityUnits] = useState<string>('');
+    const [quantityDozens, setQuantityDozens] = useState<string>('');
     const [reason, setReason] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const sanitizedValue = e.target.value.replace(',', '.');
-        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
-            setQuantity(sanitizedValue);
+    const selectedItem = useMemo(() => items.find(i => i.id === Number(itemId)), [items, itemId]);
+
+    useEffect(() => {
+        setQuantityUnits('');
+        setQuantityDozens('');
+    }, [selectedItem]);
+
+    const handleUnitsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value.replace(',', '.');
+        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+            setQuantityUnits(val);
+            if (val === '') {
+                setQuantityDozens('');
+            } else {
+                const num = parseFloat(val);
+                if (!isNaN(num)) {
+                    const doz = num / 12;
+                    setQuantityDozens(Number.isInteger(doz) ? doz.toString() : doz.toFixed(2));
+                }
+            }
+        }
+    };
+
+    const handleDozensChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value.replace(',', '.');
+        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+            setQuantityDozens(val);
+            if (val === '') {
+                setQuantityUnits('');
+            } else {
+                const num = parseFloat(val);
+                if (!isNaN(num)) {
+                    const units = num * 12;
+                    setQuantityUnits(Number.isInteger(units) ? units.toString() : units.toFixed(2));
+                }
+            }
         }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!itemId || !quantity || Number(quantity) <= 0) {
+        
+        // Determine the effective quantity based on the item's unit
+        let quantityChange = 0;
+        if (!selectedItem) {
+             alert('Artículo no encontrado.');
+             return;
+        }
+
+        const unit = selectedItem.unit.toLowerCase();
+        if (unit === 'docenas') {
+            quantityChange = parseFloat(quantityDozens);
+        } else {
+            // Default to units for 'unidades' or any other unit (kg, m, etc.)
+            quantityChange = parseFloat(quantityUnits);
+        }
+
+        if (!itemId || isNaN(quantityChange) || quantityChange <= 0) {
             alert('Por favor, seleccione un artículo e ingrese una cantidad válida.');
             return;
         }
         setIsSubmitting(true);
 
-        const selectedItem = items.find(i => i.id === Number(itemId));
-        if (!selectedItem) {
-            alert('Artículo no encontrado.');
-            setIsSubmitting(false);
-            return;
-        }
-
-        const quantityChange = Number(quantity);
         const newQuantity = movementType === 'Salida'
             ? selectedItem.quantity - quantityChange
             : selectedItem.quantity + quantityChange;
@@ -254,32 +297,99 @@ const StockMovementForm: React.FC<{
         setIsSubmitting(false);
     };
 
+    const itemOptions = useMemo(() => items.map(i => ({
+        id: i.id,
+        label: i.name,
+        subLabel: `${i.brand} - Stock: ${i.quantity} ${i.unit}`
+    })), [items]);
+
+    // Always show dual inputs unless it's a unit that doesn't make sense (like kg/m), 
+    // but for now we default to showing them to meet the request "make it always show".
+    // However, we should probably only show it if the selected item is compatible or if no item is selected yet.
+    // If an item is selected and it is kg/m, we might want to revert to single input or just disable the dozens part.
+    // The user request said "make it always show", implying for the relevant items or maybe globally.
+    // Given the context of "unidades" and "docenas", let's show it by default.
+    // If the selected item is explicitly NOT units/dozens (e.g. kg), we might want to hide it to avoid confusion,
+    // but the user said "make it always show". I will interpret this as "don't hide it when nothing is selected".
+    // But if I select 'Metros', showing 'Docenas' is confusing. 
+    // I will assume the user primarily works with units/dozens and wants to see the boxes ready.
+    // I'll add a check: if selectedItem is present AND it is NOT units/dozens, show single box.
+    // Otherwise (no selection OR units/dozens), show dual boxes.
+    
+    const isStandardUnit = !selectedItem || ['unidades', 'docenas'].includes(selectedItem.unit.toLowerCase());
+
     return (
         <Card title="Registrar Movimiento de Stock" className="mb-6">
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Artículo</label>
-                        <select value={itemId} onChange={e => setItemId(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-                            <option value="" disabled>Seleccionar...</option>
-                            {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                        </select>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Artículo</label>
+                        <SearchableSelect 
+                            options={itemOptions}
+                            value={itemId}
+                            onChange={setItemId}
+                            placeholder="Buscar artículo..."
+                        />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Tipo de Movimiento</label>
-                        <select value={movementType} onChange={e => setMovementType(e.target.value as any)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Movimiento</label>
+                        <select value={movementType} onChange={e => setMovementType(e.target.value as any)} required className="block w-full p-2 border border-gray-300 rounded-md">
                             <option value="Salida">Salida (Venta, Desperdicio, etc.)</option>
                             <option value="Entrada">Entrada / Ajuste</option>
                         </select>
                     </div>
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Cantidad</label>
-                        <input type="text" inputMode="decimal" value={quantity} onChange={handleQuantityChange} required placeholder="0" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                     <div className={isStandardUnit ? "col-span-1 md:col-span-1" : "col-span-1"}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                        {isStandardUnit ? (
+                            <div className="flex space-x-2">
+                                <div className="flex-1">
+                                    <label className="block text-xs text-gray-500 mb-1">Unidades</label>
+                                    <div className="relative rounded-md shadow-sm">
+                                        <input 
+                                            type="text" 
+                                            inputMode="decimal" 
+                                            value={quantityUnits} 
+                                            onChange={handleUnitsChange} 
+                                            placeholder="0" 
+                                            className="block w-full border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-xs text-gray-500 mb-1">Docenas</label>
+                                    <div className="relative rounded-md shadow-sm">
+                                        <input 
+                                            type="text" 
+                                            inputMode="decimal" 
+                                            value={quantityDozens} 
+                                            onChange={handleDozensChange} 
+                                            placeholder="0" 
+                                            className="block w-full border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="relative rounded-md shadow-sm">
+                                <input 
+                                    type="text" 
+                                    inputMode="decimal" 
+                                    value={quantityUnits} 
+                                    onChange={handleUnitsChange} 
+                                    required 
+                                    placeholder="0" 
+                                    className="block w-full pr-16 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
+                                />
+                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                    <span className="text-gray-500 sm:text-sm">{selectedItem?.unit || 'Unidad'}</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Razón / Nota (Opcional)</label>
-                    <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: Venta a cliente X, ajuste de conteo" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Razón / Nota (Opcional)</label>
+                    <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: Venta a cliente X, ajuste de conteo" className="block w-full p-2 border border-gray-300 rounded-md" />
                 </div>
                 <div className="flex justify-end space-x-2 pt-2">
                     <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition">Cancelar</button>
