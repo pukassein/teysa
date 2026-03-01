@@ -1,5 +1,5 @@
 
-export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders' | 'suppliers' | 'productionLog';
+export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders' | 'suppliers' | 'productionLog' | 'sellers';
 
 export enum TaskStatus {
   Pendiente = 'Pendiente',
@@ -116,4 +116,28 @@ export interface InventoryMovement {
   reason?: string;
   type: 'Entrada' | 'Salida';
   is_cancelled: boolean;
+}
+
+export interface Seller {
+    id: number;
+    name: string;
+    created_at: string;
+}
+
+export interface SellerInventory {
+    id: number;
+    seller_id: number;
+    inventory_id: number;
+    quantity: number;
+    last_updated: string;
+}
+
+export interface SellerMovement {
+    id: number;
+    seller_id: number;
+    inventory_id: number;
+    type: 'Carga' | 'Venta' | 'Devolución';
+    quantity: number;
+    date: string;
+    notes?: string;
 }

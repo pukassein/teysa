@@ -12,6 +12,7 @@ import LoginView from './components/views/LoginView';
 import ProductionOrdersView from './components/views/ProductionOrdersView';
 import SuppliersView from './components/views/SuppliersView';
 import ProductionLogView from './components/views/ProductionLogView';
+import SellersView from './components/views/SellersView';
 import type { View } from './types';
 import FeedbackButton from './components/FeedbackButton';
 
@@ -40,6 +41,8 @@ const App: React.FC = () => {
                 return <SuppliersView />;
             case 'productionLog':
                 return <ProductionLogView />;
+            case 'sellers':
+                return <SellersView />;
             default:
                 return <DashboardView />;
         }

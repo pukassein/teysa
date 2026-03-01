@@ -9,10 +9,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "^19.1.1",
-    "recharts": "^3.1.2",
+    "@supabase/supabase-js": "^2.57.2",
+    "lucide-react": "^0.575.0",
     "react": "^19.1.1",
-    "@supabase/supabase-js": "^2.57.2"
+    "react-dom": "^19.1.1",
+    "recharts": "^3.1.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
