@@ -23,27 +23,36 @@ const NavLink: React.FC<{
     label: string;
     isActive: boolean;
     onClick: () => void;
-}> = ({ icon, label, isActive, onClick }) => {
+    isHighlight?: boolean;
+}> = ({ icon, label, isActive, onClick, isHighlight }) => {
     return (
         <a
             href="#"
             onClick={(e) => { e.preventDefault(); onClick(); }}
-            className={`flex items-center px-4 py-3 text-gray-100 hover:bg-slate-500 rounded-lg transition-colors duration-200 ${isActive ? 'bg-slate-500' : ''}`}
+            className={`flex items-center px-4 py-3 text-gray-100 hover:bg-slate-500 rounded-lg transition-colors duration-200 ${isActive ? 'bg-slate-500' : ''} ${isHighlight && !isActive ? 'bg-blue-500/10 border border-blue-400/20' : ''}`}
         >
             {icon}
             <span className="mx-4 font-medium">{label}</span>
+            {isHighlight && (
+                <span className="ml-auto flex h-2.5 w-2.5 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
+                </span>
+            )}
         </a>
     );
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, isOpen, setIsOpen }) => {
-    const navItems: { view: View; label: string; icon: React.ReactNode }[] = [
+    const [hasViewedSellers, setHasViewedSellers] = useState(false);
+
+    const navItems: { view: View; label: string; icon: React.ReactNode; isHighlight?: boolean }[] = [
         { view: 'dashboard', label: 'Dashboard', icon: <DashboardIcon className="h-6 w-6" /> },
         { view: 'tasks', label: 'Gestión de Tareas', icon: <TasksIcon className="h-6 w-6" /> },
         { view: 'productionOrders', label: 'Órdenes de Producción', icon: <ProductionIcon className="h-6 w-6" /> },
         { view: 'productionLog', label: 'Registro de Producción', icon: <ClipboardListIcon className="h-6 w-6" /> },
         { view: 'workers', label: 'Funcionarios', icon: <UsersIcon className="h-6 w-6" /> },
-        { view: 'sellers', label: 'Vendedores', icon: <UsersIcon className="h-6 w-6" /> },
+        { view: 'sellers', label: 'Vendedores', icon: <UsersIcon className="h-6 w-6" />, isHighlight: !hasViewedSellers },
         { view: 'inventory', label: 'Inventario', icon: <InventoryIcon className="h-6 w-6" /> },
         { view: 'suppliers', label: 'Proveedores', icon: <SupplierIcon className="h-6 w-6" /> },
         { view: 'machines', label: 'Máquinas', icon: <MachineIcon className="h-6 w-6" /> },
@@ -63,6 +72,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, isOpen, se
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     const handleNavClick = (view: View) => {
+        if (view === 'sellers') {
+            setHasViewedSellers(true);
+        }
         setActiveView(view);
         setIsOpen(false);
     };
@@ -99,6 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, isOpen, se
                                 label={item.label}
                                 isActive={activeView === item.view}
                                 onClick={() => handleNavClick(item.view)}
+                                isHighlight={item.isHighlight}
                             />
                         ))}
                     </nav>
