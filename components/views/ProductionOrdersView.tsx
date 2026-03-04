@@ -302,7 +302,7 @@ const RecipeManager: React.FC<{
                                                             <li key={recipe.id} className="flex justify-between items-center p-2 bg-gray-50 rounded group">
                                                                 <span>{material?.name || 'Material no encontrado'}</span>
                                                                 <div className="flex items-center space-x-3">
-                                                                <span className="font-mono text-gray-700">{recipe.quantity_required} {material?.unit}</span>
+                                                                <span className="font-mono text-gray-700">{Number(recipe.quantity_required).toFixed(2)} {material?.unit}</span>
                                                                 <button onClick={() => handleDeleteRecipeItem(recipe.id)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                     <TrashIcon className="w-4 h-4" />
                                                                 </button>
@@ -420,7 +420,7 @@ const ProductionOrdersView: React.FC = () => {
                                     {orders.map(order => (
                                         <tr key={order.id} className="hover:bg-gray-50 border-b">
                                             <td className="p-4 font-semibold">{order.product_name}</td>
-                                            <td className="p-4 text-center font-mono">{order.quantity_to_produce}</td>
+                                            <td className="p-4 text-center font-mono">{Number(order.quantity_to_produce).toFixed(2)}</td>
                                             <td className="p-4 text-center">{order.status}</td>
                                             <td className="p-4">{new Date(order.created_at).toLocaleDateString('es-ES')}</td>
                                             <td className="p-4">{order.completed_at ? new Date(order.completed_at).toLocaleDateString('es-ES') : 'N/A'}</td>

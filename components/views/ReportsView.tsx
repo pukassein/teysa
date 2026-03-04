@@ -29,7 +29,7 @@ const WorkerReportCard: React.FC<{ stats: WorkerStats }> = ({ stats }) => {
                     <p><strong>Eficiencia Promedio:</strong> 
                         {stats.efficiency !== null ? (
                              <span className={`font-bold ${stats.efficiency >= 100 ? 'text-green-600' : 'text-orange-600'}`}>
-                                {stats.efficiency.toFixed(1)}%
+                                {stats.efficiency.toFixed(2)}%
                              </span>
                         ) : ' N/A'}
                     </p>

@@ -441,7 +441,7 @@ const InventoryRow: React.FC<{ item: InventoryItem; onEdit: (item: InventoryItem
             </td>
             <td className="p-4 text-center">
                 <span className={`font-mono text-lg ${isLowStock ? 'text-red-600 font-bold' : 'text-gray-700'}`}>
-                    {displayQuantity}
+                    {Number(displayQuantity).toFixed(2)}
                 </span>
                 <span className="text-sm text-gray-500 ml-1">{displayUnit}</span>
             </td>
@@ -560,7 +560,7 @@ const MovementHistory: React.FC<{ items: InventoryItem[]; onDataNeedsRefresh: ()
                                 </td>
                                 <td className="p-4 text-center font-mono">
                                     <span className={m.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}>
-                                        {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}
+                                        {m.quantity_change > 0 ? `+${Number(m.quantity_change).toFixed(2)}` : Number(m.quantity_change).toFixed(2)}
                                     </span>
                                     <span className={`ml-1 ${m.is_cancelled ? '' : 'text-gray-500'}`}>{m.inventory?.unit}</span>
                                 </td>

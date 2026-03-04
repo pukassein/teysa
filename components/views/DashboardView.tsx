@@ -111,7 +111,7 @@ const GoalCard: React.FC<{ goal: ProductionGoal; onUpdate: (id: number, newGoal:
             ) : (
                 <>
                     <div className="flex justify-between items-center mb-2">
-                        <span className="text-2xl font-bold text-gray-800">{goal.current} / {goal.target}</span>
+                        <span className="text-2xl font-bold text-gray-800">{Number(goal.current).toFixed(2)} / {Number(goal.target).toFixed(2)}</span>
                         <span className="text-sm font-medium text-gray-500">{goal.deadline}</span>
                     </div>
                     <ProgressBar value={goal.current} max={goal.target} />
