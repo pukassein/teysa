@@ -125,58 +125,6 @@ const ProductionLogForm: React.FC<{
                 reason: 'Producción registrada'
             });
 
-            // B. Find the product recipe and decrease raw materials
-            const { data: productData, error: productError } = await supabase
-                .from('products')
-                .select('id')
-                .eq('finished_product_inventory_id', producedInventoryId)
-                .single();
-
-            if (productError) {
-                console.warn(`No recipe found for inventory item ${producedInventoryId}. Only product stock was updated.`);
-            } else if (productData) {
-                const { data: recipeItems, error: recipeError } = await supabase
-                    .from('product_recipes')
-                    .select('*')
-                    .eq('product_id', productData.id);
-                
-                if (recipeError) throw recipeError;
-
-                if (Array.isArray(recipeItems)) {
-                    // Create a transaction of updates for raw materials
-                    const updatePromises = recipeItems.map(async (item) => {
-                        const requiredQty = item.quantity_required * producedQuantity;
-                        const { data: material, error: materialError } = await supabase
-                            .from('inventory')
-                            .select('quantity')
-                            .eq('id', item.raw_material_inventory_id)
-                            .single();
-                        
-                        if (materialError) throw materialError;
-
-                        if (!material) {
-                            throw new Error(`Material with id ${item.raw_material_inventory_id} not found in inventory.`);
-                        }
-
-                        const { error: updateError } = await supabase
-                            .from('inventory')
-                            .update({ quantity: material.quantity - requiredQty })
-                            .eq('id', item.raw_material_inventory_id);
-
-                        if (updateError) throw updateError;
-
-                        // Log movement for raw material
-                        await supabase.from('inventory_movements').insert({
-                            inventory_id: item.raw_material_inventory_id,
-                            quantity_change: -requiredQty,
-                            type: 'Salida',
-                            reason: 'Consumo producción'
-                        });
-                    });
-
-                    await Promise.all(updatePromises);
-                }
-            }
             alert("¡Producción registrada y stock actualizado con éxito!");
         } catch(inventoryError: any) {
             console.error("Error updating inventory:", inventoryError);
@@ -347,7 +295,7 @@ const ProductionLogView: React.FC = () => {
     }, []);
 
     const handleDelete = async (logId: number) => {
-        if (!window.confirm("¿Estás seguro de que quieres eliminar este registro? Esta acción revertirá los cambios de stock (restará el producto terminado y devolverá la materia prima).")) return;
+        if (!window.confirm("¿Estás seguro de que quieres eliminar este registro? Esta acción revertirá los cambios de stock (restará el producto terminado).")) return;
 
         try {
             // 1. Get the log details before deleting
@@ -384,55 +332,6 @@ const ProductionLogView: React.FC = () => {
                 type: 'Salida',
                 reason: `Eliminación producción #${logId}`
             });
-
-            // 3. Revert raw materials (increase)
-            const { data: productData, error: productError } = await supabase
-                .from('products')
-                .select('id')
-                .eq('finished_product_inventory_id', producedInventoryId)
-                .single();
-
-            if (productError) {
-                console.warn(`No recipe found for inventory item ${producedInventoryId}. Only product stock was reverted.`);
-            } else if (productData) {
-                const { data: recipeItems, error: recipeError } = await supabase
-                    .from('product_recipes')
-                    .select('*')
-                    .eq('product_id', productData.id);
-                
-                if (recipeError) throw recipeError;
-
-                if (Array.isArray(recipeItems)) {
-                    const updatePromises = recipeItems.map(async (item) => {
-                        const requiredQty = item.quantity_required * producedQuantity;
-                        const { data: material, error: materialError } = await supabase
-                            .from('inventory')
-                            .select('quantity')
-                            .eq('id', item.raw_material_inventory_id)
-                            .single();
-                        
-                        if (materialError) throw materialError;
-                        if (!material) throw new Error(`Material ${item.raw_material_inventory_id} not found.`);
-
-                        const { error: updateError } = await supabase
-                            .from('inventory')
-                            .update({ quantity: material.quantity + requiredQty })
-                            .eq('id', item.raw_material_inventory_id);
-
-                        if (updateError) throw updateError;
-
-                        // Log movement for raw material
-                        await supabase.from('inventory_movements').insert({
-                            inventory_id: item.raw_material_inventory_id,
-                            quantity_change: requiredQty,
-                            type: 'Entrada',
-                            reason: `Devolución materia prima (Prod #${logId})`
-                        });
-                    });
-
-                    await Promise.all(updatePromises);
-                }
-            }
 
             // 4. Delete the log
             const { error: deleteError } = await supabase
