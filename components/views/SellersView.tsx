@@ -4,7 +4,7 @@ import { Seller, SellerInventory, SellerMovement, InventoryItem } from '../../ty
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import SearchableSelect from '../ui/SearchableSelect';
-import { PlusIcon, TrashIcon, ArrowRightIcon, ArrowLeftIcon, ShoppingCartIcon, Users as UsersIcon, UndoIcon, XIcon } from 'lucide-react';
+import { PlusIcon, TrashIcon, ArrowRightIcon, ArrowLeftIcon, ShoppingCartIcon, Users as UsersIcon, UndoIcon, XIcon, EditIcon } from 'lucide-react';
 
 // --- Sub-components ---
 
@@ -12,8 +12,9 @@ const SellerList: React.FC<{
     sellers: Seller[];
     onSelect: (seller: Seller) => void;
     onAdd: () => void;
+    onEdit: (seller: Seller) => void;
     onDelete: (id: number) => void;
-}> = ({ sellers, onSelect, onAdd, onDelete }) => (
+}> = ({ sellers, onSelect, onAdd, onEdit, onDelete }) => (
     <Card title="Vendedores" className="h-full">
         <div className="flex justify-between items-center mb-4">
             <p className="text-sm text-gray-500">Seleccione un vendedor para ver detalles</p>
@@ -29,15 +30,25 @@ const SellerList: React.FC<{
                     <div 
                         key={seller.id} 
                         onClick={() => onSelect(seller)}
-                        className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-blue-50 cursor-pointer transition border border-gray-200"
+                        className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-blue-50 cursor-pointer transition border border-gray-200 group"
                     >
                         <span className="font-medium text-gray-800">{seller.name}</span>
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); onDelete(seller.id); }}
-                            className="text-red-400 hover:text-red-600 p-1"
-                        >
-                            <TrashIcon size={16} />
-                        </button>
+                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onEdit(seller); }}
+                                className="text-blue-400 hover:text-blue-600 p-1"
+                                title="Editar nombre"
+                            >
+                                <EditIcon size={16} />
+                            </button>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onDelete(seller.id); }}
+                                className="text-red-400 hover:text-red-600 p-1"
+                                title="Eliminar vendedor"
+                            >
+                                <TrashIcon size={16} />
+                            </button>
+                        </div>
                     </div>
                 ))
             )}
@@ -406,7 +417,7 @@ const SellersView: React.FC = () => {
     const [activeAction, setActiveAction] = useState<'Carga' | 'Venta' | 'Devolución' | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [showWhatsNew, setShowWhatsNew] = useState(() => {
-        return localStorage.getItem('vendedores_whats_new_dismissed') !== 'true';
+        return sessionStorage.getItem('vendedores_whats_new_dismissed') !== 'true';
     });
 
     useEffect(() => {
@@ -464,6 +475,25 @@ const SellersView: React.FC = () => {
             const { error } = await supabase.from('sellers').insert({ name });
             if (error) alert('Error al crear vendedor: ' + error.message);
             else fetchSellers();
+        }
+    };
+
+    const handleEditSeller = async (seller: Seller) => {
+        const newName = prompt('Editar nombre del vendedor:', seller.name);
+        if (newName && newName.trim() !== '' && newName !== seller.name) {
+            const { error } = await supabase
+                .from('sellers')
+                .update({ name: newName.trim() })
+                .eq('id', seller.id);
+            
+            if (error) {
+                alert('Error al actualizar vendedor: ' + error.message);
+            } else {
+                fetchSellers();
+                if (selectedSeller?.id === seller.id) {
+                    setSelectedSeller({ ...selectedSeller, name: newName.trim() });
+                }
+            }
         }
     };
 
@@ -683,6 +713,7 @@ const SellersView: React.FC = () => {
                     sellers={sellers} 
                     onSelect={setSelectedSeller} 
                     onAdd={handleAddSeller}
+                    onEdit={handleEditSeller}
                     onDelete={handleDeleteSeller}
                 />
             </div>
@@ -758,7 +789,7 @@ const SellersView: React.FC = () => {
                         <button 
                             onClick={() => {
                                 setShowWhatsNew(false);
-                                localStorage.setItem('vendedores_whats_new_dismissed', 'true');
+                                sessionStorage.setItem('vendedores_whats_new_dismissed', 'true');
                             }}
                             className="text-blue-100 hover:text-white transition"
                         >
