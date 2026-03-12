@@ -4,7 +4,7 @@ import { Seller, SellerInventory, SellerMovement, InventoryItem } from '../../ty
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import SearchableSelect from '../ui/SearchableSelect';
-import { PlusIcon, TrashIcon, ArrowRightIcon, ArrowLeftIcon, ShoppingCartIcon, Users as UsersIcon, UndoIcon } from 'lucide-react';
+import { PlusIcon, TrashIcon, ArrowRightIcon, ArrowLeftIcon, ShoppingCartIcon, Users as UsersIcon, UndoIcon, XIcon } from 'lucide-react';
 
 // --- Sub-components ---
 
@@ -405,6 +405,9 @@ const SellersView: React.FC = () => {
     const [centralInventory, setCentralInventory] = useState<InventoryItem[]>([]);
     const [activeAction, setActiveAction] = useState<'Carga' | 'Venta' | 'Devolución' | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [showWhatsNew, setShowWhatsNew] = useState(() => {
+        return localStorage.getItem('vendedores_whats_new_dismissed') !== 'true';
+    });
 
     useEffect(() => {
         fetchSellers();
@@ -746,6 +749,44 @@ const SellersView: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* What's New Pop-up */}
+            {showWhatsNew && (
+                <div className="fixed bottom-6 right-6 w-80 bg-white rounded-xl shadow-2xl border border-blue-100 overflow-hidden z-50 transition-all duration-500 ease-in-out transform translate-y-0 opacity-100">
+                    <div className="bg-blue-600 px-4 py-3 flex justify-between items-center">
+                        <h3 className="text-white font-semibold text-sm">Novedades en Vendedores</h3>
+                        <button 
+                            onClick={() => {
+                                setShowWhatsNew(false);
+                                localStorage.setItem('vendedores_whats_new_dismissed', 'true');
+                            }}
+                            className="text-blue-100 hover:text-white transition"
+                        >
+                            <XIcon size={18} />
+                        </button>
+                    </div>
+                    <div className="p-4 bg-blue-50/50">
+                        <ul className="space-y-3 text-sm text-gray-700">
+                            <li className="flex items-start">
+                                <span className="text-blue-500 mr-2">•</span>
+                                <span><strong>Fechas y Semanas:</strong> Ahora puedes ver y registrar la fecha exacta y la semana de cada movimiento.</span>
+                            </li>
+                            <li className="flex items-start">
+                                <span className="text-blue-500 mr-2">•</span>
+                                <span><strong>Deshacer Movimientos:</strong> ¿Te equivocaste? Usa el botón deshacer en el historial.</span>
+                            </li>
+                            <li className="flex items-start">
+                                <span className="text-blue-500 mr-2">•</span>
+                                <span><strong>Stock Claro:</strong> Visualiza el stock en unidades y docenas simultáneamente.</span>
+                            </li>
+                            <li className="flex items-start">
+                                <span className="text-blue-500 mr-2">•</span>
+                                <span><strong>Filtro Inteligente:</strong> La materia prima ya no satura esta vista.</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
