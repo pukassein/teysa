@@ -4,7 +4,7 @@ import { Seller, SellerInventory, SellerMovement, InventoryItem } from '../../ty
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import SearchableSelect from '../ui/SearchableSelect';
-import { PlusIcon, TrashIcon, ArrowRightIcon, ArrowLeftIcon, ShoppingCartIcon, Users as UsersIcon } from 'lucide-react';
+import { PlusIcon, TrashIcon, ArrowRightIcon, ArrowLeftIcon, ShoppingCartIcon, Users as UsersIcon, UndoIcon } from 'lucide-react';
 
 // --- Sub-components ---
 
@@ -54,8 +54,8 @@ const SellerInventoryTable: React.FC<{
                 <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Marca</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock en Camión</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unidad</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock (Unidades)</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock (Docenas)</th>
                 </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -64,27 +64,136 @@ const SellerInventoryTable: React.FC<{
                         <td colSpan={4} className="px-6 py-4 text-center text-gray-500">El camión está vacío.</td>
                     </tr>
                 ) : (
-                    inventory.map(item => (
-                        <tr key={item.id}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                {item.inventory_item?.name || 'Desconocido'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {item.inventory_item?.brand || '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
-                                {Number(item.quantity).toFixed(2)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {item.inventory_item?.unit || '-'}
-                            </td>
-                        </tr>
-                    ))
+                    inventory.map(item => {
+                        const unitLower = item.inventory_item?.unit?.toLowerCase() || '';
+                        let displayQuantity = Number(item.quantity);
+                        let quantityInDozens: string | number = '-';
+
+                        if (unitLower === 'unidades') {
+                            quantityInDozens = (displayQuantity / 12).toFixed(2);
+                        } else if (unitLower === 'docenas') {
+                            displayQuantity = displayQuantity * 12;
+                            quantityInDozens = Number(item.quantity).toFixed(2);
+                        }
+
+                        return (
+                            <tr key={item.id}>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {item.inventory_item?.name || 'Desconocido'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {item.inventory_item?.brand || '-'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
+                                    {unitLower === 'unidades' || unitLower === 'docenas' 
+                                        ? displayQuantity.toFixed(2) 
+                                        : `${displayQuantity.toFixed(2)} ${item.inventory_item?.unit || ''}`}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {quantityInDozens}
+                                </td>
+                            </tr>
+                        );
+                    })
                 )}
             </tbody>
         </table>
     </div>
 );
+
+const MovementHistoryTable: React.FC<{
+    movements: (SellerMovement & { inventory_item?: InventoryItem })[];
+    onUndo: (movement: SellerMovement & { inventory_item?: InventoryItem }) => void;
+}> = ({ movements, onUndo }) => {
+    
+    // Helper to get week number
+    const getWeekNumber = (d: Date) => {
+        d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+        var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+        var weekNo = Math.ceil(( ( (d.getTime() - yearStart.getTime()) / 86400000) + 1)/7);
+        return weekNo;
+    };
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notas</th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acción</th>
+                    </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                    {movements.length === 0 ? (
+                        <tr>
+                            <td colSpan={6} className="px-6 py-4 text-center text-gray-500">No hay movimientos registrados.</td>
+                        </tr>
+                    ) : (
+                        movements.map(mov => {
+                            // Ensure we have a valid date string before parsing
+                            let dateObj: Date;
+                            if (mov.date) {
+                                // If it's just a date string like '2023-10-27', append time to avoid timezone issues
+                                dateObj = new Date(mov.date.includes('T') ? mov.date : mov.date + 'T00:00:00');
+                            } else if (mov.created_at) {
+                                dateObj = new Date(mov.created_at);
+                            } else {
+                                dateObj = new Date(); // Fallback to now
+                            }
+                            
+                            // Check if dateObj is valid
+                            if (isNaN(dateObj.getTime())) {
+                                dateObj = new Date(); // Fallback if parsing failed
+                            }
+
+                            const weekNum = getWeekNumber(dateObj);
+                            return (
+                                <tr key={mov.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <div className="flex flex-col">
+                                            <span>{dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}</span>
+                                            <span className="text-xs text-gray-400">Semana {weekNum}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <Badge 
+                                            color={mov.type === 'Carga' ? 'blue' : mov.type === 'Venta' ? 'green' : 'yellow'} 
+                                        >
+                                            {mov.type}
+                                        </Badge>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        {mov.inventory_item?.name || 'Desconocido'}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                                        {Number(mov.quantity).toFixed(2)} {mov.inventory_item?.unit || ''}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                                        {mov.notes || '-'}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button 
+                                            onClick={() => onUndo(mov)}
+                                            className="text-red-500 hover:text-red-700 flex items-center justify-end w-full"
+                                            title="Deshacer movimiento"
+                                        >
+                                            <UndoIcon size={16} className="mr-1" /> Deshacer
+                                        </button>
+                                    </td>
+                                </tr>
+                            );
+                        })
+                    )}
+                </tbody>
+            </table>
+        </div>
+    );
+};
 
 const MovementForm: React.FC<{
     type: 'Carga' | 'Venta' | 'Devolución';
@@ -98,6 +207,7 @@ const MovementForm: React.FC<{
     const [quantityUnits, setQuantityUnits] = useState<string>('');
     const [quantityDozens, setQuantityDozens] = useState<string>('');
     const [notes, setNotes] = useState<string>('');
+    const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Determine which list of items to show based on movement type
@@ -172,13 +282,13 @@ const MovementForm: React.FC<{
             }
         }
 
-        if (!itemId || isNaN(qty) || qty <= 0) {
-            alert('Por favor, seleccione un artículo e ingrese una cantidad válida.');
+        if (!itemId || isNaN(qty) || qty <= 0 || !date) {
+            alert('Por favor, seleccione un artículo, ingrese una cantidad válida y una fecha.');
             return;
         }
 
         setIsSubmitting(true);
-        await onSubmit({ inventory_id: parseInt(itemId), quantity: qty, notes });
+        await onSubmit({ inventory_id: parseInt(itemId), quantity: qty, notes, date });
         setIsSubmitting(false);
     };
 
@@ -193,6 +303,17 @@ const MovementForm: React.FC<{
     return (
         <Card title={`Registrar ${type} - ${seller.name}`} className="mb-6 border-2 border-blue-100">
             <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                    <input 
+                        type="date" 
+                        value={date} 
+                        onChange={e => setDate(e.target.value)} 
+                        required 
+                        className="block w-full p-2 border border-gray-300 rounded-md"
+                    />
+                </div>
+
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
                     <SearchableSelect 
@@ -280,6 +401,7 @@ const SellersView: React.FC = () => {
     const [sellers, setSellers] = useState<Seller[]>([]);
     const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
     const [sellerInventory, setSellerInventory] = useState<(SellerInventory & { inventory_item?: InventoryItem })[]>([]);
+    const [sellerMovements, setSellerMovements] = useState<(SellerMovement & { inventory_item?: InventoryItem })[]>([]);
     const [centralInventory, setCentralInventory] = useState<InventoryItem[]>([]);
     const [activeAction, setActiveAction] = useState<'Carga' | 'Venta' | 'Devolución' | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -292,6 +414,7 @@ const SellersView: React.FC = () => {
     useEffect(() => {
         if (selectedSeller) {
             fetchSellerInventory(selectedSeller.id);
+            fetchSellerMovements(selectedSeller.id);
             setActiveAction(null);
         }
     }, [selectedSeller]);
@@ -303,7 +426,7 @@ const SellersView: React.FC = () => {
     };
 
     const fetchCentralInventory = async () => {
-        const { data, error } = await supabase.from('inventory').select('*').order('name');
+        const { data, error } = await supabase.from('inventory').select('*').eq('type', 'Producto Terminado').order('name');
         if (error) console.error('Error fetching inventory:', error);
         else setCentralInventory(data || []);
     };
@@ -318,6 +441,18 @@ const SellersView: React.FC = () => {
         if (error) console.error('Error fetching seller inventory:', error);
         else setSellerInventory(data || []);
         setIsLoading(false);
+    };
+
+    const fetchSellerMovements = async (sellerId: number) => {
+        const { data, error } = await supabase
+            .from('seller_movements')
+            .select('*, inventory_item:inventory(*)')
+            .eq('seller_id', sellerId)
+            .order('date', { ascending: false })
+            .order('id', { ascending: false });
+        
+        if (error) console.error('Error fetching seller movements:', error);
+        else setSellerMovements(data || []);
     };
 
     const handleAddSeller = async () => {
@@ -340,10 +475,10 @@ const SellersView: React.FC = () => {
         }
     };
 
-    const handleMovement = async (data: { inventory_id: number; quantity: number; notes: string }) => {
+    const handleMovement = async (data: { inventory_id: number; quantity: number; notes: string; date: string }) => {
         if (!selectedSeller || !activeAction) return;
 
-        const { inventory_id, quantity, notes } = data;
+        const { inventory_id, quantity, notes, date } = data;
         const sellerId = selectedSeller.id;
 
         try {
@@ -442,6 +577,7 @@ const SellersView: React.FC = () => {
                 inventory_id,
                 type: activeAction,
                 quantity,
+                date,
                 notes
             });
 
@@ -449,10 +585,91 @@ const SellersView: React.FC = () => {
             setActiveAction(null);
             fetchSellerInventory(sellerId);
             fetchCentralInventory(); // Refresh central inventory to keep sync
+            fetchSellerMovements(sellerId);
 
         } catch (error: any) {
             console.error('Transaction error:', error);
             alert('Error al procesar la operación: ' + error.message);
+        }
+    };
+
+    const handleUndoMovement = async (movement: SellerMovement & { inventory_item?: InventoryItem }) => {
+        if (!window.confirm('¿Estás seguro de deshacer este movimiento? Se revertirán los cambios de stock.')) return;
+
+        try {
+            // 1. Validate Stock
+            if (movement.type === 'Carga') {
+                const item = sellerInventory.find(i => i.inventory_id === movement.inventory_id);
+                if (!item || item.quantity < movement.quantity) {
+                    alert('El vendedor ya no tiene suficiente stock para deshacer esta carga.');
+                    return;
+                }
+            } else if (movement.type === 'Devolución') {
+                const item = centralInventory.find(i => i.id === movement.inventory_id);
+                if (!item || item.quantity < movement.quantity) {
+                    alert('No hay suficiente stock en el inventario central para deshacer esta devolución.');
+                    return;
+                }
+            }
+
+            // 2. Perform Revert Updates
+            if (movement.type === 'Carga') {
+                // Decrease Seller
+                const sellerItem = sellerInventory.find(i => i.inventory_id === movement.inventory_id)!;
+                await supabase.from('seller_inventory').update({ quantity: sellerItem.quantity - movement.quantity }).eq('id', sellerItem.id);
+                
+                // Increase Central
+                const centralItem = centralInventory.find(i => i.id === movement.inventory_id)!;
+                await supabase.from('inventory').update({ quantity: centralItem.quantity + movement.quantity }).eq('id', centralItem.id);
+                
+                // Log Central Movement
+                await supabase.from('inventory_movements').insert({
+                    inventory_id: movement.inventory_id,
+                    quantity_change: movement.quantity,
+                    type: 'Entrada',
+                    reason: `Deshacer Carga a Vendedor: ${selectedSeller?.name}`
+                });
+            } else if (movement.type === 'Venta') {
+                // Increase Seller
+                const sellerItem = sellerInventory.find(i => i.inventory_id === movement.inventory_id);
+                if (sellerItem) {
+                    await supabase.from('seller_inventory').update({ quantity: sellerItem.quantity + movement.quantity }).eq('id', sellerItem.id);
+                } else {
+                    await supabase.from('seller_inventory').insert({ seller_id: movement.seller_id, inventory_id: movement.inventory_id, quantity: movement.quantity });
+                }
+            } else if (movement.type === 'Devolución') {
+                // Decrease Central
+                const centralItem = centralInventory.find(i => i.id === movement.inventory_id)!;
+                await supabase.from('inventory').update({ quantity: centralItem.quantity - movement.quantity }).eq('id', centralItem.id);
+                
+                // Increase Seller
+                const sellerItem = sellerInventory.find(i => i.inventory_id === movement.inventory_id);
+                if (sellerItem) {
+                    await supabase.from('seller_inventory').update({ quantity: sellerItem.quantity + movement.quantity }).eq('id', sellerItem.id);
+                } else {
+                    await supabase.from('seller_inventory').insert({ seller_id: movement.seller_id, inventory_id: movement.inventory_id, quantity: movement.quantity });
+                }
+                
+                // Log Central Movement
+                await supabase.from('inventory_movements').insert({
+                    inventory_id: movement.inventory_id,
+                    quantity_change: -movement.quantity,
+                    type: 'Salida',
+                    reason: `Deshacer Devolución de Vendedor: ${selectedSeller?.name}`
+                });
+            }
+
+            // 3. Delete Movement Record
+            await supabase.from('seller_movements').delete().eq('id', movement.id);
+
+            alert('Movimiento deshecho con éxito.');
+            fetchSellerInventory(movement.seller_id);
+            fetchCentralInventory();
+            fetchSellerMovements(movement.seller_id);
+
+        } catch (error: any) {
+            console.error('Undo error:', error);
+            alert('Error al deshacer la operación: ' + error.message);
         }
     };
 
@@ -516,6 +733,10 @@ const SellersView: React.FC = () => {
                             ) : (
                                 <SellerInventoryTable inventory={sellerInventory} />
                             )}
+                        </Card>
+
+                        <Card title="Historial de Movimientos">
+                            <MovementHistoryTable movements={sellerMovements} onUndo={handleUndoMovement} />
                         </Card>
                     </div>
                 ) : (

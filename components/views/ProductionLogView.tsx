@@ -251,7 +251,7 @@ const ProductionLogView: React.FC = () => {
                 .limit(100);
 
             const workersPromise = supabase.from('workers').select('*').order('name');
-            const productsPromise = supabase.from('inventory').select('*').order('name');
+            const productsPromise = supabase.from('inventory').select('*').eq('type', 'Producto Terminado').order('name');
             
             const [
                 logsResult,

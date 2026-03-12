@@ -601,10 +601,20 @@ const InventoryView: React.FC = () => {
     const [brandFilter, setBrandFilter] = useState<'all' | Brand>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState<'stock' | 'history'>('stock');
+    const formRef = React.useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         fetchInventory();
     }, []);
+
+    useEffect(() => {
+        if (editingItem || showAddForm || showStockMovementForm) {
+            // Add a small delay to ensure the form is rendered before scrolling
+            setTimeout(() => {
+                formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        }
+    }, [editingItem, showAddForm, showStockMovementForm]);
 
     const fetchInventory = async () => {
         setLoading(true);
@@ -783,10 +793,11 @@ const InventoryView: React.FC = () => {
                 </nav>
             </div>
 
-            {showAddForm && <InventoryItemForm onSave={handleAddItem} onCancel={() => setShowAddForm(false)} />}
-            {editingItem && <InventoryItemForm item={editingItem} onSave={handleUpdateItem} onCancel={() => setEditingItem(null)} isEdit />}
-            {showStockMovementForm && <StockMovementForm items={items} onSave={fetchInventory} onCancel={() => setShowStockMovementForm(false)} />}
-
+            <div ref={formRef}>
+                {showAddForm && <InventoryItemForm onSave={handleAddItem} onCancel={() => setShowAddForm(false)} />}
+                {editingItem && <InventoryItemForm item={editingItem} onSave={handleUpdateItem} onCancel={() => setEditingItem(null)} isEdit />}
+                {showStockMovementForm && <StockMovementForm items={items} onSave={fetchInventory} onCancel={() => setShowStockMovementForm(false)} />}
+            </div>
 
             {loading ? (
                 <p className="text-center text-gray-500">Cargando inventario...</p>
