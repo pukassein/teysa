@@ -19,13 +19,34 @@ const OrderModal: React.FC<{
     onOrderCreated: () => void;
 }> = ({ products, inventory, recipes, onClose, onOrderCreated }) => {
     const [selectedProductId, setSelectedProductId] = useState<number | ''>('');
-    const [quantity, setQuantity] = useState('1');
+    const [quantityUnits, setQuantityUnits] = useState('1');
+    const [quantityDozens, setQuantityDozens] = useState((1 / 12).toFixed(2));
+    const [programmedDate, setProgrammedDate] = useState('');
+    const [startTime, setStartTime] = useState('');
+    const [endTime, setEndTime] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleQuantityUnitsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const sanitizedValue = e.target.value.replace(',', '.');
         if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
-            setQuantity(sanitizedValue);
+            setQuantityUnits(sanitizedValue);
+            if (sanitizedValue !== '') {
+                setQuantityDozens((Number(sanitizedValue) / 12).toFixed(2));
+            } else {
+                setQuantityDozens('');
+            }
+        }
+    };
+
+    const handleQuantityDozensChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const sanitizedValue = e.target.value.replace(',', '.');
+        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
+            setQuantityDozens(sanitizedValue);
+            if (sanitizedValue !== '') {
+                setQuantityUnits((Number(sanitizedValue) * 12).toString());
+            } else {
+                setQuantityUnits('');
+            }
         }
     };
 
@@ -38,7 +59,7 @@ const OrderModal: React.FC<{
         }
 
         let allStockSufficient = true;
-        const currentQuantity = Number(quantity) || 0;
+        const currentQuantity = Number(quantityUnits) || 0;
 
         const materials = productRecipes.map(recipe => {
             const materialInfo = inventory.find(i => i.id === recipe.raw_material_inventory_id);
@@ -58,11 +79,11 @@ const OrderModal: React.FC<{
         });
         
         return { requiredMaterials: materials, sufficientStock: allStockSufficient, hasRecipe: true };
-    }, [selectedProductId, quantity, recipes, inventory]);
+    }, [selectedProductId, quantityUnits, recipes, inventory]);
     
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const numericQuantity = Number(quantity);
+        const numericQuantity = Number(quantityUnits);
         if (!selectedProductId || numericQuantity <= 0 || !sufficientStock || !hasRecipe) return;
         
         setIsSubmitting(true);
@@ -70,6 +91,9 @@ const OrderModal: React.FC<{
             product_id: selectedProductId,
             quantity_to_produce: numericQuantity,
             status: 'Pendiente',
+            programmed_date: programmedDate || null,
+            start_time: startTime || null,
+            end_time: endTime || null,
         });
         setIsSubmitting(false);
 
@@ -96,9 +120,29 @@ const OrderModal: React.FC<{
                                     {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                 </select>
                             </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label htmlFor="quantityUnits" className="block text-sm font-medium text-gray-700">Cantidad (Unidades)</label>
+                                    <input type="text" inputMode="decimal" id="quantityUnits" value={quantityUnits} onChange={handleQuantityUnitsChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" required/>
+                                </div>
+                                <div>
+                                    <label htmlFor="quantityDozens" className="block text-sm font-medium text-gray-700">Cantidad (Docenas)</label>
+                                    <input type="text" inputMode="decimal" id="quantityDozens" value={quantityDozens} onChange={handleQuantityDozensChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" required/>
+                                </div>
+                            </div>
                             <div>
-                                <label htmlFor="quantity" className="block text-sm font-medium text-gray-700">Cantidad a Producir</label>
-                                <input type="text" inputMode="decimal" id="quantity" value={quantity} onChange={handleQuantityChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" required/>
+                                <label htmlFor="programmedDate" className="block text-sm font-medium text-gray-700">Fecha Programada (Opcional)</label>
+                                <input type="date" id="programmedDate" value={programmedDate} onChange={e => setProgrammedDate(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Hora Inicio (Opcional)</label>
+                                    <input type="time" id="startTime" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                                </div>
+                                <div>
+                                    <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">Hora Fin (Opcional)</label>
+                                    <input type="time" id="endTime" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
+                                </div>
                             </div>
                         </div>
                         {selectedProductId && (
@@ -412,6 +456,7 @@ const ProductionOrdersView: React.FC = () => {
                                         <th scope="col" className="p-4">Producto</th>
                                         <th scope="col" className="p-4 text-center">Cantidad</th>
                                         <th scope="col" className="p-4 text-center">Estado</th>
+                                        <th scope="col" className="p-4">Programado</th>
                                         <th scope="col" className="p-4">Fecha de Creación</th>
                                         <th scope="col" className="p-4">Fecha de Finalización</th>
                                     </tr>
@@ -422,6 +467,10 @@ const ProductionOrdersView: React.FC = () => {
                                             <td className="p-4 font-semibold">{order.product_name}</td>
                                             <td className="p-4 text-center font-mono">{Number(order.quantity_to_produce).toFixed(2)}</td>
                                             <td className="p-4 text-center">{order.status}</td>
+                                            <td className="p-4">
+                                                {order.programmed_date ? new Date(order.programmed_date + 'T00:00:00').toLocaleDateString('es-ES') : 'N/A'}
+                                                {order.start_time && order.end_time && <span className="block text-xs text-gray-500">{order.start_time} - {order.end_time}</span>}
+                                            </td>
                                             <td className="p-4">{new Date(order.created_at).toLocaleDateString('es-ES')}</td>
                                             <td className="p-4">{order.completed_at ? new Date(order.completed_at).toLocaleDateString('es-ES') : 'N/A'}</td>
                                         </tr>

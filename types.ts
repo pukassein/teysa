@@ -87,6 +87,9 @@ export interface ProductionOrder {
   status: 'Pendiente' | 'En Proceso' | 'Completado';
   created_at: string;
   completed_at?: string;
+  programmed_date?: string;
+  start_time?: string;
+  end_time?: string;
 }
 
 export interface Supplier {
