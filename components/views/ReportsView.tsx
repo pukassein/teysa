@@ -10,7 +10,6 @@ interface WorkerStats {
     worker: Worker;
     completedTasks: number;
     totalHours: number;
-    efficiency: number | null;
 }
 
 const WorkerReportCard: React.FC<{ stats: WorkerStats }> = ({ stats }) => {
@@ -26,13 +25,6 @@ const WorkerReportCard: React.FC<{ stats: WorkerStats }> = ({ stats }) => {
                 <div className="text-sm text-gray-600 mt-2 space-y-1">
                     <p><strong>Tareas Completadas:</strong> {stats.completedTasks}</p>
                     <p><strong>Horas Útiles Trabajadas:</strong> {stats.totalHours.toFixed(2)}</p>
-                    <p><strong>Eficiencia Promedio:</strong> 
-                        {stats.efficiency !== null ? (
-                             <span className={`font-bold ${stats.efficiency >= 100 ? 'text-green-600' : 'text-orange-600'}`}>
-                                {stats.efficiency.toFixed(2)}%
-                             </span>
-                        ) : ' N/A'}
-                    </p>
                 </div>
             </div>
         </div>
@@ -74,7 +66,6 @@ const ReportsView: React.FC = () => {
             const actualTime = calculateWorkingHours(new Date(task.startTime!), new Date(task.endTime!));
             return {
                 name: `Tarea ${task.id}`,
-                'Tiempo Estimado': task.estimatedTime,
                 'Tiempo Real (útil)': parseFloat(actualTime.toFixed(2)),
             };
         });
@@ -88,21 +79,16 @@ const ReportsView: React.FC = () => {
         );
 
         let totalHours = 0;
-        let totalEstimated = 0;
 
         completedWorkerTasks.forEach(task => {
             const actualTime = calculateWorkingHours(new Date(task.startTime!), new Date(task.endTime!));
             totalHours += actualTime;
-            totalEstimated += task.estimatedTime;
         });
-
-        const efficiency = totalHours > 0 ? (totalEstimated / totalHours) * 100 : null;
 
         return {
             worker,
             completedTasks: completedWorkerTasks.length,
             totalHours,
-            efficiency,
         };
     }).sort((a,b) => b.completedTasks - a.completedTasks);
 
@@ -129,7 +115,7 @@ const ReportsView: React.FC = () => {
                     </ResponsiveContainer>
                 </Card>
 
-                <Card title="Eficiencia de Tareas (Horas)">
+                <Card title="Tiempo de Tareas (Horas)">
                      {efficiencyData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
                             <BarChart data={efficiencyData}>
@@ -138,7 +124,6 @@ const ReportsView: React.FC = () => {
                                 <YAxis />
                                 <Tooltip />
                                 <Legend />
-                                <Bar dataKey="Tiempo Estimado" fill="#8884d8" />
                                 <Bar dataKey="Tiempo Real (útil)" fill="#82ca9d" />
                             </BarChart>
                         </ResponsiveContainer>

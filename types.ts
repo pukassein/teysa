@@ -24,11 +24,11 @@ export interface Task {
     id: number;
     title: string;
     workerIds: number[];
-    estimatedTime: number; // in hours
-    startTime?: Date;
-    endTime?: Date;
+    startTime?: string;
+    endTime?: string;
     status: TaskStatus;
     is_archived?: boolean;
+    created_at?: string;
 }
 
 export interface ProductionGoal {

@@ -11,14 +11,14 @@ export const WORKERS: Worker[] = [
 ];
 
 export const TASKS: Task[] = [
-    { id: 1, title: 'Pulido de Chasis', workerIds: [1], estimatedTime: 4, status: TaskStatus.Terminado, startTime: new Date('2023-10-27T08:00:00'), endTime: new Date('2023-10-27T11:45:00') },
-    { id: 2, title: 'Ensamblaje de Motor', workerIds: [2], estimatedTime: 6, status: TaskStatus.EnProceso, startTime: new Date('2023-10-27T09:15:00') },
-    { id: 3, title: 'Empaquetado', workerIds: [3], estimatedTime: 2, status: TaskStatus.Pendiente },
-    { id: 4, title: 'Control de Calidad Final', workerIds: [4], estimatedTime: 3, status: TaskStatus.Pendiente },
-    { id: 5, title: 'Corte de Material', workerIds: [5], estimatedTime: 8, status: TaskStatus.EnProceso, startTime: new Date('2023-10-27T22:00:00') },
-    { id: 6, title: 'Pintura', workerIds: [6], estimatedTime: 5, status: TaskStatus.Bloqueado },
-    { id: 7, title: 'Soldadura de Componentes', workerIds: [1], estimatedTime: 3, status: TaskStatus.EnProceso, startTime: new Date() },
-    { id: 8, title: 'Preparación de Envío', workerIds: [4], estimatedTime: 2, status: TaskStatus.Pendiente },
+    { id: 1, title: 'Pulido de Chasis', workerIds: [1], status: TaskStatus.Terminado, startTime: new Date('2023-10-27T08:00:00').toISOString(), endTime: new Date('2023-10-27T11:45:00').toISOString() },
+    { id: 2, title: 'Ensamblaje de Motor', workerIds: [2], status: TaskStatus.EnProceso, startTime: new Date('2023-10-27T09:15:00').toISOString() },
+    { id: 3, title: 'Empaquetado', workerIds: [3], status: TaskStatus.Pendiente },
+    { id: 4, title: 'Control de Calidad Final', workerIds: [4], status: TaskStatus.Pendiente },
+    { id: 5, title: 'Corte de Material', workerIds: [5], status: TaskStatus.EnProceso, startTime: new Date('2023-10-27T22:00:00').toISOString() },
+    { id: 6, title: 'Pintura', workerIds: [6], status: TaskStatus.Bloqueado },
+    { id: 7, title: 'Soldadura de Componentes', workerIds: [1], status: TaskStatus.EnProceso, startTime: new Date().toISOString() },
+    { id: 8, title: 'Preparación de Envío', workerIds: [4], status: TaskStatus.Pendiente },
 ];
 
 export const PRODUCTION_GOALS: ProductionGoal[] = [

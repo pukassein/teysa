@@ -18,74 +18,19 @@ const getStatusColor = (status: TaskStatus): 'gray' | 'blue' | 'green' | 'red' =
     }
 };
 
-const TimeRangeCalculator: React.FC<{
-    onDurationCalculated: (hours: number) => void;
-}> = ({ onDurationCalculated }) => {
-    const getTodayString = () => {
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
-    };
+const formatDateForInput = (dateString?: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    const offset = date.getTimezoneOffset() * 60000;
+    return (new Date(date.getTime() - offset)).toISOString().slice(0, 16);
+};
 
-    const [startDate, setStartDate] = useState(getTodayString());
-    const [startTime, setStartTime] = useState('07:00');
-    const [endDate, setEndDate] = useState(getTodayString());
-    const [endTime, setEndTime] = useState('16:00');
-    const [calculatedHours, setCalculatedHours] = useState<number | null>(null);
-
-    useEffect(() => {
-        if (startDate && startTime && endDate && endTime) {
-            const startDateTime = new Date(`${startDate}T${startTime}`);
-            const endDateTime = new Date(`${endDate}T${endTime}`);
-
-            if (endDateTime >= startDateTime) {
-                const hours = calculateWorkingHours(startDateTime, endDateTime);
-                setCalculatedHours(hours);
-            } else {
-                setCalculatedHours(0);
-            }
-        }
-    }, [startDate, startTime, endDate, endTime]);
-
-    const handleApply = () => {
-        if (calculatedHours !== null) {
-            onDurationCalculated(calculatedHours);
-        }
-    };
-
-    return (
-        <div className="mt-2 p-3 bg-gray-50 rounded-lg border">
-            <p className="text-sm font-semibold text-gray-700 mb-2">Opcional: Calcular por rango</p>
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="text-xs text-gray-600">Desde</label>
-                    <div className="flex gap-2 mt-1">
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="block w-full p-1 border border-gray-300 rounded-md text-sm" aria-label="Fecha de inicio"/>
-                        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="block w-full p-1 border border-gray-300 rounded-md text-sm" aria-label="Hora de inicio" />
-                    </div>
-                </div>
-                <div>
-                    <label className="text-xs text-gray-600">Hasta</label>
-                     <div className="flex gap-2 mt-1">
-                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="block w-full p-1 border border-gray-300 rounded-md text-sm" aria-label="Fecha de fin"/>
-                        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="block w-full p-1 border border-gray-300 rounded-md text-sm" aria-label="Hora de fin"/>
-                    </div>
-                </div>
-            </div>
-            {calculatedHours !== null && (
-                <div className="mt-3 text-center">
-                    <p className="text-sm text-gray-800">
-                        Horas útiles: <span className="font-bold">{calculatedHours.toFixed(2)}</span>
-                    </p>
-                    <button type="button" onClick={handleApply} className="mt-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-xs font-medium transition">
-                        Usar esta duración
-                    </button>
-                </div>
-            )}
-        </div>
-    );
+const formatDisplayDate = (dateString?: string) => {
+    if (!dateString) return 'No definido';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'No definido';
+    return date.toLocaleString();
 };
 
 interface ManagerTaskCardProps {
@@ -105,13 +50,15 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
     
     const [editedFields, setEditedFields] = useState({
         title: task.title,
-        estimatedTime: task.estimatedTime.toString(),
+        startTime: formatDateForInput(task.startTime),
+        endTime: formatDateForInput(task.endTime),
     });
 
     useEffect(() => {
         setEditedFields({
             title: task.title,
-            estimatedTime: task.estimatedTime.toString(),
+            startTime: formatDateForInput(task.startTime),
+            endTime: formatDateForInput(task.endTime),
         });
     }, [task, isEditing]);
 
@@ -127,20 +74,14 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
 
     const handleFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        if (name === 'estimatedTime') {
-            const sanitizedValue = value.replace(',', '.');
-            if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
-                setEditedFields(prev => ({ ...prev, estimatedTime: sanitizedValue }));
-            }
-        } else {
-            setEditedFields(prev => ({ ...prev, [name]: value }));
-        }
+        setEditedFields(prev => ({ ...prev, [name]: value }));
     };
 
     const handleSave = () => {
         onUpdateTask(task.id, {
-            ...editedFields,
-            estimatedTime: Number(editedFields.estimatedTime) || 0,
+            title: editedFields.title,
+            startTime: editedFields.startTime ? new Date(editedFields.startTime).toISOString() : undefined,
+            endTime: editedFields.endTime ? new Date(editedFields.endTime).toISOString() : undefined,
         });
     };
     
@@ -157,12 +98,12 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
         const update: Partial<Task> = { status: newStatus };
 
         if (newStatus === TaskStatus.EnProceso && task.status === TaskStatus.Pendiente) {
-            update.startTime = new Date();
+            update.startTime = new Date().toISOString();
         }
         if (newStatus === TaskStatus.Terminado) {
-            update.endTime = new Date();
+            update.endTime = new Date().toISOString();
             if (!task.startTime) {
-                 update.startTime = new Date();
+                 update.startTime = new Date().toISOString();
             }
         }
         onUpdateTask(task.id, update);
@@ -182,27 +123,28 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
                  {isEditing ? (
                     <div className="flex-1 space-y-2 mr-4 w-full">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                              <div>
                                 <label className="text-xs font-medium text-gray-500">Título de la Tarea</label>
                                 <input name="title" value={editedFields.title} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                              </div>
                              <div>
-                                <label className="text-xs font-medium text-gray-500">Tiempo Est. (hrs)</label>
-                                <input type="text" inputMode="decimal" name="estimatedTime" value={editedFields.estimatedTime} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                                <TimeRangeCalculator onDurationCalculated={(hours) => {
-                                    setEditedFields(prev => ({
-                                        ...prev,
-                                        estimatedTime: hours.toFixed(2)
-                                    }));
-                                }} />
+                                <label className="text-xs font-medium text-gray-500">Inicio Programado</label>
+                                <input type="datetime-local" name="startTime" value={editedFields.startTime} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                             </div>
+                             <div>
+                                <label className="text-xs font-medium text-gray-500">Finalizado</label>
+                                <input type="datetime-local" name="endTime" value={editedFields.endTime} onChange={handleFieldChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                              </div>
                         </div>
                     </div>
                 ) : (
                     <div>
                         <h4 className="text-xl font-bold text-gray-800">{task.title}</h4>
-                        <p className="text-gray-500">Tiempo estimado: {task.estimatedTime} horas</p>
+                        <div className="text-sm text-gray-500 mt-1 space-y-1">
+                            <p>Inicio Programado: {formatDisplayDate(task.startTime)}</p>
+                            {task.endTime && <p>Finalizado: {formatDisplayDate(task.endTime)}</p>}
+                        </div>
                     </div>
                 )}
                  <div className="flex items-center space-x-2 mt-2 sm:mt-0 flex-shrink-0">
@@ -295,7 +237,8 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
 
 const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'id'>) => void, onCancel: () => void }> = ({ workers, onAddTask, onCancel }) => {
     const [title, setTitle] = useState('');
-    const [estimatedTime, setEstimatedTime] = useState('');
+    const [startTime, setStartTime] = useState(formatDateForInput(new Date().toISOString()));
+    const [endTime, setEndTime] = useState('');
     const [workerIds, setWorkerIds] = useState<number[]>([]);
     
     const handleWorkerSelect = (workerId: number) => {
@@ -306,20 +249,14 @@ const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'i
         );
     };
 
-    const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const sanitizedValue = e.target.value.replace(',', '.');
-        if (sanitizedValue === '' || /^\d*\.?\d*$/.test(sanitizedValue)) {
-            setEstimatedTime(sanitizedValue);
-        }
-    };
-
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!title.trim() || !estimatedTime) return;
+        if (!title.trim()) return;
         
         onAddTask({
             title,
-            estimatedTime: parseFloat(estimatedTime),
+            startTime: startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
+            endTime: endTime ? new Date(endTime).toISOString() : undefined,
             workerIds,
             status: TaskStatus.Pendiente,
             is_archived: false,
@@ -329,26 +266,29 @@ const AddTaskForm: React.FC<{ workers: Worker[], onAddTask: (task: Omit<Task, 'i
     return (
         <Card title="Añadir Nueva Tarea" className="mb-6">
             <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <label htmlFor="title" className="block text-sm font-medium text-gray-700">Título de la Tarea</label>
                         <input type="text" id="title" value={title} onChange={e => setTitle(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                     </div>
                     <div>
-                        <label htmlFor="estimatedTime" className="block text-sm font-medium text-gray-700">Tiempo Estimado (horas)</label>
-                        <input type="text" inputMode="decimal" id="estimatedTime" value={estimatedTime} onChange={handleTimeChange} required placeholder="Ej: 4.5" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                        <TimeRangeCalculator onDurationCalculated={(hours) => setEstimatedTime(hours.toFixed(2))} />
+                        <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Inicio Programado</label>
+                        <input type="datetime-local" id="startTime" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
                     </div>
-                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Asignar a Funcionarios</label>
-                        <div className="mt-1 border border-gray-300 rounded-md max-h-32 overflow-y-auto p-2">
-                             {workers.map(w => (
-                                <label key={w.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
-                                    <input type="checkbox" checked={workerIds.includes(w.id)} onChange={() => handleWorkerSelect(w.id)} className="rounded" />
-                                    <span>{w.name}</span>
-                                </label>
-                             ))}
-                        </div>
+                    <div>
+                        <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">Finalizado</label>
+                        <input type="datetime-local" id="endTime" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Asignar a Funcionarios</label>
+                    <div className="mt-1 border border-gray-300 rounded-md max-h-32 overflow-y-auto p-2">
+                         {workers.map(w => (
+                            <label key={w.id} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded">
+                                <input type="checkbox" checked={workerIds.includes(w.id)} onChange={() => handleWorkerSelect(w.id)} className="rounded" />
+                                <span>{w.name}</span>
+                            </label>
+                         ))}
                     </div>
                 </div>
                 <div className="flex justify-end space-x-2">
