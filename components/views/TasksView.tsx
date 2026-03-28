@@ -8,6 +8,7 @@ import ClockIcon from '../icons/ClockIcon';
 import { supabase } from '../../supabaseClient';
 import { calculateWorkingHours } from '../../constants';
 import SearchIcon from '../icons/SearchIcon';
+import TaskCommentsModal from './TaskCommentsModal';
 
 const getStatusColor = (status: TaskStatus): 'gray' | 'blue' | 'green' | 'red' => {
     switch (status) {
@@ -41,9 +42,10 @@ interface ManagerTaskCardProps {
     isEditing: boolean;
     onSetEditing: (taskId: number) => void;
     onCancelEditing: () => void;
+    onOpenComments: (task: Task) => void;
 }
 
-const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpdateTask, onDeleteTask, isEditing, onSetEditing, onCancelEditing }) => {
+const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpdateTask, onDeleteTask, isEditing, onSetEditing, onCancelEditing, onOpenComments }) => {
     const assignedWorkers = workers.filter(w => task.workerIds?.includes(w.id));
     const [isWorkerDropdownOpen, setIsWorkerDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -161,6 +163,7 @@ const ManagerTaskCard: React.FC<ManagerTaskCardProps> = ({ task, workers, onUpda
                             ) : task.status === TaskStatus.Terminado && (
                                 <button onClick={handleArchive} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium transition">Archivar</button>
                             )}
+                            <button onClick={() => onOpenComments(task)} className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200 text-sm font-medium transition">Comentarios</button>
                             <button onClick={() => onSetEditing(task.id)} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium transition">Editar</button>
                             <button onClick={() => onDeleteTask(task.id)} className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm font-medium transition">Eliminar</button>
                         </>
@@ -309,6 +312,7 @@ const TasksView: React.FC = () => {
     const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
     const [filter, setFilter] = useState<'active' | 'archived'>('active');
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedTaskForComments, setSelectedTaskForComments] = useState<Task | null>(null);
 
     useEffect(() => {
         fetchTasks();
@@ -444,10 +448,20 @@ const TasksView: React.FC = () => {
                         isEditing={editingTaskId === task.id}
                         onSetEditing={setEditingTaskId}
                         onCancelEditing={() => setEditingTaskId(null)}
+                        onOpenComments={setSelectedTaskForComments}
                     />
                 ))
             ) : (
                 !loading && <Card><p className="text-center text-gray-500 py-4">No hay tareas para gestionar en esta vista {searchTerm && `que coincidan con "${searchTerm}"`}.</p></Card>
+            )}
+
+            {selectedTaskForComments && (
+                <TaskCommentsModal
+                    task={selectedTaskForComments}
+                    workers={workers}
+                    onClose={() => setSelectedTaskForComments(null)}
+                    onDataChanged={() => {}}
+                />
             )}
         </div>
     );
