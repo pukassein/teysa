@@ -229,6 +229,10 @@ const ProductionLogView: React.FC = () => {
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [isProcessingBulk, setIsProcessingBulk] = useState(false);
 
+    // State for Guardado modal
+    const [guardadoPromptLog, setGuardadoPromptLog] = useState<EnrichedProductionLog | null>(null);
+    const [guardadoQuantityValue, setGuardadoQuantityValue] = useState<string>('');
+
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -313,29 +317,9 @@ const ProductionLogView: React.FC = () => {
                  alert("Error al activar la producción: " + err.message);
              }
         } else if (newStatus === 'Guardado') {
-             const input = window.prompt(`Ingresa la cantidad guardada para ${log.inventory?.name} (Cantidad producida: ${log.quantity}):`, log.quantity.toString());
-             if (input === null) return; // User cancelled
-             const parsedInput = parseFloat(input);
-             
-             if (isNaN(parsedInput) || parsedInput <= 0) {
-                 alert('Por favor, ingresa una cantidad válida mayor a 0.');
-                 return;
-             }
-             if (parsedInput > log.quantity) {
-                 alert('La cantidad guardada no puede ser mayor a la cantidad a guardar (producida).');
-                 return;
-             }
-
-             const { error } = await supabase.from('production_log').update({ status: newStatus, stored_quantity: parsedInput }).eq('id', log.id);
-             if (error) alert("Error cambiando estado.");
-             else {
-                 // Insert activity log
-                 await supabase.from('activity_logs').insert({
-                     action_type: 'Estado a Guardado',
-                     details: `Lote de ${parsedInput} ${log.inventory?.unit || 'unid.'} de ${log.inventory?.name || 'producto'} marcado como Guardado (Producido: ${log.quantity}).`
-                 });
-                 fetchData();
-             }
+             setGuardadoPromptLog(log);
+             setGuardadoQuantityValue(log.quantity.toString());
+             return;
         } else {
              const { error } = await supabase.from('production_log').update({ status: newStatus }).eq('id', log.id);
              if (error) alert("Error cambiando estado.");
@@ -450,6 +434,53 @@ const ProductionLogView: React.FC = () => {
                     onSave={handleSaveForm} 
                     initialData={editingLog} 
                 />
+            )}
+
+            {guardadoPromptLog && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+                        <h3 className="text-lg font-bold mb-4 text-gray-800">Confirmar Cantidad Guardada</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Ingresa la cantidad final guardada para <strong>{guardadoPromptLog.inventory?.name}</strong>.
+                            <br/>
+                            <span className="text-gray-500 mt-1 inline-block">Cantidad a guardar (producida): <strong>{guardadoPromptLog.quantity}</strong> {guardadoPromptLog.inventory?.unit}</span>
+                        </p>
+                        <input 
+                            type="number" 
+                            step="any"
+                            value={guardadoQuantityValue} 
+                            onChange={e => setGuardadoQuantityValue(e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded-md mb-6 focus:ring-blue-500 focus:border-blue-500"
+                            autoFocus
+                        />
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => setGuardadoPromptLog(null)} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition font-medium">Cancelar</button>
+                            <button onClick={async () => {
+                                const parsedInput = parseFloat(guardadoQuantityValue);
+                                if (isNaN(parsedInput) || parsedInput <= 0) {
+                                    alert('Por favor, ingresa una cantidad válida mayor a 0.');
+                                    return;
+                                }
+                                if (parsedInput > guardadoPromptLog.quantity) {
+                                    alert('La cantidad guardada no puede ser mayor a la cantidad a guardar (producida).');
+                                    return;
+                                }
+                                
+                                const { error } = await supabase.from('production_log').update({ status: 'Guardado', stored_quantity: parsedInput }).eq('id', guardadoPromptLog.id);
+                                if (error) {
+                                    alert("Error cambiando estado.");
+                                } else {
+                                    await supabase.from('activity_logs').insert({
+                                        action_type: 'Estado a Guardado',
+                                        details: `Lote de ${parsedInput} ${guardadoPromptLog.inventory?.unit || 'unid.'} de ${guardadoPromptLog.inventory?.name || 'producto'} marcado como Guardado (Producido: ${guardadoPromptLog.quantity}).`
+                                    });
+                                    fetchData();
+                                }
+                                setGuardadoPromptLog(null);
+                            }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium shadow-sm">Confirmar</button>
+                        </div>
+                    </div>
+                </div>
             )}
             
             <div className="border-b border-gray-200">
