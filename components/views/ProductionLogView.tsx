@@ -162,7 +162,7 @@ const LogFormModal: React.FC<{
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad a guardar *</label>
                                 {isStandardUnit ? (
                                     <div className="flex space-x-2">
                                         <div className="flex-1">
@@ -293,7 +293,8 @@ const ProductionLogView: React.FC = () => {
 
     const handleUpdateStatus = async (log: EnrichedProductionLog, newStatus: ProductionLogStatus) => {
         if (newStatus === 'Activar' as any) {
-             if (!window.confirm(`¿Confirmas que deseas Activar esta producción? Se sumarán ${log.quantity} ${log.inventory?.unit} al inventario.`)) return;
+             const qtyToActivate = typeof log.stored_quantity === 'number' ? log.stored_quantity : log.quantity;
+             if (!window.confirm(`¿Confirmas que deseas Activar esta producción? Se sumarán ${qtyToActivate} ${log.inventory?.unit} al inventario.`)) return;
 
              try {
                 // Call atomic transaction to guarantee no double counting
@@ -311,41 +312,52 @@ const ProductionLogView: React.FC = () => {
                  console.error(err);
                  alert("Error al activar la producción: " + err.message);
              }
+        } else if (newStatus === 'Guardado') {
+             const input = window.prompt(`Ingresa la cantidad guardada para ${log.inventory?.name} (Cantidad producida: ${log.quantity}):`, log.quantity.toString());
+             if (input === null) return; // User cancelled
+             const parsedInput = parseFloat(input);
+             
+             if (isNaN(parsedInput) || parsedInput <= 0) {
+                 alert('Por favor, ingresa una cantidad válida mayor a 0.');
+                 return;
+             }
+             if (parsedInput > log.quantity) {
+                 alert('La cantidad guardada no puede ser mayor a la cantidad a guardar (producida).');
+                 return;
+             }
+
+             const { error } = await supabase.from('production_log').update({ status: newStatus, stored_quantity: parsedInput }).eq('id', log.id);
+             if (error) alert("Error cambiando estado.");
+             else {
+                 // Insert activity log
+                 await supabase.from('activity_logs').insert({
+                     action_type: 'Estado a Guardado',
+                     details: `Lote de ${parsedInput} ${log.inventory?.unit || 'unid.'} de ${log.inventory?.name || 'producto'} marcado como Guardado (Producido: ${log.quantity}).`
+                 });
+                 fetchData();
+             }
         } else {
              const { error } = await supabase.from('production_log').update({ status: newStatus }).eq('id', log.id);
              if (error) alert("Error cambiando estado.");
              else {
-                 // Insert activity log
-                 if (newStatus === 'Guardado') {
-                     await supabase.from('activity_logs').insert({
-                         action_type: 'Estado a Guardado',
-                         details: `Lote de ${log.quantity} ${log.inventory?.unit || 'unid.'} de ${log.inventory?.name || 'producto'} marcado como Guardado.`
-                     });
-                 }
-
-                 setLogs(current => current.map(l => l.id === log.id ? { ...l, status: newStatus } : l));
-                 if (selectedIds.has(log.id)) {
-                     const newSet = new Set(selectedIds);
-                     newSet.delete(log.id);
-                     setSelectedIds(newSet);
-                 }
+                 fetchData();
              }
         }
     };
 
     const handleBulkUpdateStatus = async (newStatus: ProductionLogStatus) => {
         if (!selectedIds.size) return;
+        
+        if (newStatus === 'Guardado') {
+            alert("No se puede mover a 'Guardado' en lote porque se requiere confirmar la 'cantidad guardada' de cada producto individualmente. Por favor, hazlo uno por uno.");
+            return;
+        }
+
         setIsProcessingBulk(true);
         const { error } = await supabase.from('production_log').update({ status: newStatus }).in('id', Array.from(selectedIds));
         if (error) {
             alert('Error: ' + error.message);
         } else {
-            if (newStatus === 'Guardado') {
-                await supabase.from('activity_logs').insert({
-                    action_type: 'Estado a Guardado',
-                    details: `Lote de ${selectedIds.size} registros marcados como Guardados en lote.`
-                });
-            }
             setSelectedIds(new Set());
             fetchData();
         }
@@ -470,7 +482,7 @@ const ProductionLogView: React.FC = () => {
                                 {activeTab === 'Para guardar' && (
                                     <>
                                         <button disabled={isProcessingBulk} onClick={handleBulkDelete} className="px-3 py-1.5 text-red-600 bg-white border border-gray-300 hover:bg-red-50 rounded text-sm transition font-medium">Eliminar</button>
-                                        <button disabled={isProcessingBulk} onClick={() => handleBulkUpdateStatus('Guardado')} className="px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-sm text-sm transition font-medium">Pasar a Guardado</button>
+                                        <button disabled={true} onClick={() => handleBulkUpdateStatus('Guardado')} title="No disponible en lote. Se requiere confirmar la cantidad guardada individualmente." className="px-4 py-1.5 bg-gray-400 text-white rounded cursor-not-allowed shadow-sm text-sm transition font-medium">Pasar a Guardado</button>
                                     </>
                                 )}
                                 {activeTab === 'Guardado' && (
@@ -506,9 +518,23 @@ const ProductionLogView: React.FC = () => {
                                                 {log.status || 'Para guardar'}
                                             </Badge>
                                         </div>
-                                        <p className="text-gray-600">
-                                            Cantidad: <span className="font-bold">{log.quantity}</span> {log.inventory?.unit}
-                                        </p>
+                                        <div className="text-gray-600 flex flex-col gap-1 py-1">
+                                            <p>
+                                                Cantidad a guardar: <span className="font-bold">{log.quantity}</span> {log.inventory?.unit}
+                                            </p>
+                                            {(activeTab === 'Guardado' || activeTab === 'Archivado') && typeof log.stored_quantity === 'number' && (
+                                                <div className="flex items-center gap-2">
+                                                    <p>
+                                                        Cantidad guardada: <span className="font-bold text-gray-800">{log.stored_quantity}</span> {log.inventory?.unit}
+                                                    </p>
+                                                    {log.quantity !== log.stored_quantity && (
+                                                        <span className="text-xs font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded border border-amber-200">
+                                                            Diferencia: {log.quantity - log.stored_quantity}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                         <div className="text-sm text-gray-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
                                             <span>📅 {new Date(log.production_date + 'T00:00:00').toLocaleDateString()}</span>
                                             {log.workers?.name && <span>👤 {log.workers.name}</span>}

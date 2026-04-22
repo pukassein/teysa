@@ -115,7 +115,8 @@ export interface ProductionLog {
   id: number;
   worker_id?: number | null;
   inventory_id: number;
-  quantity: number;
+  quantity: number; // Represents 'cantidad a guardar'
+  stored_quantity?: number | null; // Represents 'cantidad guardada', added when moving to Guardado
   production_date: string; // 'YYYY-MM-DD'
   created_at: string;
   motivo?: string;
