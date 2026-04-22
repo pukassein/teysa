@@ -1,11 +1,18 @@
 
-export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders' | 'suppliers' | 'productionLog' | 'sellers';
+export type View = 'dashboard' | 'tasks' | 'inventory' | 'machines' | 'reports' | 'workers' | 'productionOrders' | 'suppliers' | 'productionLog' | 'sellers' | 'activityLog';
 
 export enum TaskStatus {
   Pendiente = 'Pendiente',
   EnProceso = 'En Proceso',
   Terminado = 'Terminado',
   Bloqueado = 'Bloqueado'
+}
+
+export interface ActivityLog {
+    id: number;
+    action_type: string;
+    details: string;
+    created_at: string;
 }
 
 export enum MachineStatus {
@@ -102,13 +109,17 @@ export interface Supplier {
   created_at: string;
 }
 
+export type ProductionLogStatus = 'Para guardar' | 'Guardado' | 'Archivado';
+
 export interface ProductionLog {
   id: number;
-  worker_id: number;
+  worker_id?: number | null;
   inventory_id: number;
   quantity: number;
   production_date: string; // 'YYYY-MM-DD'
   created_at: string;
+  motivo?: string;
+  status: ProductionLogStatus;
 }
 
 export interface InventoryMovement {

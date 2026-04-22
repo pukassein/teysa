@@ -55,6 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, isOpen, se
         { view: 'suppliers', label: 'Proveedores', icon: <SupplierIcon className="h-6 w-6" /> },
         { view: 'machines', label: 'Máquinas', icon: <MachineIcon className="h-6 w-6" /> },
         { view: 'reports', label: 'Reportes', icon: <ReportsIcon className="h-6 w-6" /> },
+        { view: 'activityLog', label: 'Historial', icon: <ClipboardListIcon className="h-6 w-6" /> },
     ];
 
     const [date] = useState(new Date());
