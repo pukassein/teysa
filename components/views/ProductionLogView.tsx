@@ -111,13 +111,53 @@ const LogFormModal: React.FC<{
             const { error } = await supabase.from('production_log').update(payload).eq('id', initialData.id);
             logError = error;
         } else {
-            const { error, data } = await supabase.from('production_log').insert(payload).select().single();
-            logError = error;
-            if (!error && data) {
-                await supabase.from('activity_logs').insert({
-                    action_type: 'Producción Registrada',
-                    details: `Se registró lote de ${producedQuantity} ${selectedProduct?.unit || 'unidades'} de ${selectedProduct?.name || 'producto'}.`
-                });
+            // Buscamos si ya existe un registro activo (NO Archivado) para este mismo producto
+            const { data: existingActiveLog } = await supabase
+                .from('production_log')
+                .select('*')
+                .eq('inventory_id', producedInventoryId)
+                .neq('status', 'Archivado')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (existingActiveLog) {
+                // Acumulamos las cantidades
+                const newQuantity = existingActiveLog.quantity + producedQuantity;
+                
+                const updateFields: any = { quantity: newQuantity };
+                if (motivo) {
+                    updateFields.motivo = existingActiveLog.motivo ? `${existingActiveLog.motivo} | ${motivo}` : motivo;
+                }
+                // Si la nueva fecha de producción es más reciente, la actualizamos
+                if (new Date(productionDate) > new Date(existingActiveLog.production_date)) {
+                    updateFields.production_date = productionDate;
+                }
+
+                const { error, data } = await supabase
+                    .from('production_log')
+                    .update(updateFields)
+                    .eq('id', existingActiveLog.id)
+                    .select()
+                    .single();
+                
+                logError = error;
+                if (!error && data) {
+                    await supabase.from('activity_logs').insert({
+                        action_type: 'Producción Acumulada',
+                        details: `Se sumaron ${producedQuantity} ${selectedProduct?.unit || 'unidades'} a un lote activo de ${selectedProduct?.name || 'producto'}. Total a guardar ahora: ${newQuantity}.`
+                    });
+                }
+            } else {
+                // Si no hay ninguno activo, insertamos uno nuevo comúnmente
+                const { error, data } = await supabase.from('production_log').insert(payload).select().single();
+                logError = error;
+                if (!error && data) {
+                    await supabase.from('activity_logs').insert({
+                        action_type: 'Producción Registrada',
+                        details: `Se registró lote de ${producedQuantity} ${selectedProduct?.unit || 'unidades'} de ${selectedProduct?.name || 'producto'}.`
+                    });
+                }
             }
         }
 
