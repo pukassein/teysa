@@ -445,14 +445,63 @@ const ProductionLogView: React.FC = () => {
                             <br/>
                             <span className="text-gray-500 mt-1 inline-block">Cantidad a guardar (producida): <strong>{guardadoPromptLog.quantity}</strong> {guardadoPromptLog.inventory?.unit}</span>
                         </p>
-                        <input 
-                            type="number" 
-                            step="any"
-                            value={guardadoQuantityValue} 
-                            onChange={e => setGuardadoQuantityValue(e.target.value)}
-                            className="w-full p-2 border border-gray-300 rounded-md mb-6 focus:ring-blue-500 focus:border-blue-500"
-                            autoFocus
-                        />
+                        
+                        {['unidades', 'docenas'].includes((guardadoPromptLog.inventory?.unit || '').toLowerCase()) ? (
+                            <div className="flex space-x-2 mb-6">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Unidades</label>
+                                    <input 
+                                        type="text" 
+                                        inputMode="decimal"
+                                        value={guardadoQuantityValue} 
+                                        onChange={e => {
+                                            const val = e.target.value.replace(',', '.');
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                setGuardadoQuantityValue(val);
+                                            }
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Unidades"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Docenas</label>
+                                    <input 
+                                        type="text" 
+                                        inputMode="decimal"
+                                        value={guardadoQuantityValue ? (parseFloat(guardadoQuantityValue) / 12).toFixed(2) : ''} 
+                                        onChange={e => {
+                                            const val = e.target.value.replace(',', '.');
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                if (val === '') {
+                                                    setGuardadoQuantityValue('');
+                                                } else {
+                                                    const units = parseFloat(val) * 12;
+                                                    setGuardadoQuantityValue(Number.isInteger(units) ? units.toString() : units.toFixed(2));
+                                                }
+                                            }
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Docenas"
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="relative rounded-md shadow-sm mb-6">
+                                <input 
+                                    type="number" 
+                                    step="any"
+                                    value={guardadoQuantityValue} 
+                                    onChange={e => setGuardadoQuantityValue(e.target.value)}
+                                    className="w-full pr-16 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    autoFocus
+                                />
+                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                    <span className="text-gray-500 text-sm">{guardadoPromptLog.inventory?.unit || 'Unidad'}</span>
+                                </div>
+                            </div>
+                        )}
+                        
                         <div className="flex justify-end gap-3">
                             <button onClick={() => setGuardadoPromptLog(null)} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition font-medium">Cancelar</button>
                             <button onClick={async () => {
