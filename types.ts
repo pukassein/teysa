@@ -109,14 +109,16 @@ export interface Supplier {
   created_at: string;
 }
 
-export type ProductionLogStatus = 'Para guardar' | 'Guardado' | 'Archivado';
+export type ProductionLogStatus = 'Para empaquetar' | 'Para guardar' | 'Archivado';
 
 export interface ProductionLog {
   id: number;
   worker_id?: number | null;
   inventory_id: number;
-  quantity: number; // Represents 'cantidad a guardar'
-  stored_quantity?: number | null; // Represents 'cantidad guardada', added when moving to Guardado
+  cantidad_total: number;
+  cantidad_restante: number;
+  quantity?: number; // legacy fallback before migration
+  stored_quantity?: number | null; // legacy fallback before migration
   production_date: string; // 'YYYY-MM-DD'
   created_at: string;
   motivo?: string;

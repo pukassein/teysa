@@ -797,26 +797,6 @@ const InventoryView: React.FC = () => {
                 )}
             </div>
 
-            {lowStockItems.length > 0 && !isFormOpen && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex flex-col md:flex-row items-start md:items-center justify-between shadow-sm gap-4">
-                    <div className="flex items-center">
-                        <svg className="w-6 h-6 text-red-500 mr-3 mt-1 md:mt-0 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                        <div>
-                            <h3 className="text-red-800 font-semibold">⚠️ {lowStockItems.length} productos con stock bajo</h3>
-                            <p className="text-red-600 text-sm mt-1">Revisa la tabla a continuación. Los artículos bajos en stock están resaltados en rojo.</p>
-                        </div>
-                    </div>
-                    {activeTab === 'stock' && (
-                         <button 
-                             onClick={() => setShowOnlyLowStock(!showOnlyLowStock)}
-                             className={`px-4 py-2 font-medium rounded transition flex-shrink-0 text-sm border focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 ${showOnlyLowStock ? 'bg-red-600 text-white border-red-700 hover:bg-red-700' : 'bg-white text-red-700 border-red-300 hover:bg-red-50'}`}
-                         >
-                             {showOnlyLowStock ? 'Mostrar todo' : 'Ver solo estos productos'}
-                         </button>
-                    )}
-                </div>
-            )}
-            
             <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-6" aria-label="Tabs">
                     <button onClick={() => setActiveTab('stock')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'stock' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>

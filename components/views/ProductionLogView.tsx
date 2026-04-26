@@ -20,7 +20,6 @@ const LogFormModal: React.FC<{
 }> = ({ workers, products, onClose, onSave, initialData }) => {
     const getTodayString = () => new Date().toISOString().split('T')[0];
 
-    // worker_id might be null or undefined now, but we default to '' for the select
     const [workerId, setWorkerId] = useState<string>(initialData?.worker_id?.toString() || '');
     const [inventoryId, setInventoryId] = useState<string>(initialData?.inventory_id?.toString() || '');
     const [quantityUnits, setQuantityUnits] = useState<string>('');
@@ -33,13 +32,14 @@ const LogFormModal: React.FC<{
 
     useEffect(() => {
         if (initialData && selectedProduct) {
+             const qtyTotal = initialData.cantidad_total ?? initialData.quantity ?? 0;
              const unit = selectedProduct.unit.toLowerCase();
              if (unit === 'docenas') {
-                 setQuantityDozens(initialData.quantity.toString());
-                 setQuantityUnits((initialData.quantity * 12).toString());
+                 setQuantityDozens(qtyTotal.toString());
+                 setQuantityUnits((qtyTotal * 12).toString());
              } else {
-                 setQuantityUnits(initialData.quantity.toString());
-                 setQuantityDozens((initialData.quantity / 12).toString());
+                 setQuantityUnits(qtyTotal.toString());
+                 setQuantityDozens((qtyTotal / 12).toString());
              }
         }
     }, [initialData, selectedProduct]);
@@ -100,36 +100,45 @@ const LogFormModal: React.FC<{
         const payload = {
             worker_id: workerId ? parseInt(workerId) : null,
             inventory_id: producedInventoryId,
-            quantity: producedQuantity,
+            cantidad_total: producedQuantity,
+            cantidad_restante: producedQuantity,
             production_date: productionDate,
             motivo: motivo,
-            status: initialData ? initialData.status : 'Para guardar' as ProductionLogStatus
+            status: initialData ? initialData.status : 'Para empaquetar' as ProductionLogStatus
         };
 
         let logError;
         if (initialData) {
+            // Keep original amount but logic for editing needs more thought if partial processed. Overriding fully for now.
             const { error } = await supabase.from('production_log').update(payload).eq('id', initialData.id);
             logError = error;
         } else {
-            // Buscamos si ya existe un registro activo (NO Archivado) para este mismo producto
+            // Buscamos si ya existe un registro activo (Para empaquetar) para este mismo producto
             const { data: existingActiveLog } = await supabase
                 .from('production_log')
                 .select('*')
                 .eq('inventory_id', producedInventoryId)
-                .neq('status', 'Archivado')
+                .eq('status', 'Para empaquetar')
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
 
             if (existingActiveLog) {
                 // Acumulamos las cantidades
-                const newQuantity = existingActiveLog.quantity + producedQuantity;
+                const prevTotal = existingActiveLog.cantidad_total ?? existingActiveLog.quantity ?? 0;
+                const prevRestante = existingActiveLog.cantidad_restante ?? existingActiveLog.stored_quantity ?? prevTotal;
                 
-                const updateFields: any = { quantity: newQuantity };
+                const newTotal = prevTotal + producedQuantity;
+                const newRestante = prevRestante + producedQuantity;
+                
+                const updateFields: any = { 
+                    cantidad_total: newTotal,
+                    cantidad_restante: newRestante,
+                    quantity: newTotal, // fallback
+                };
                 if (motivo) {
                     updateFields.motivo = existingActiveLog.motivo ? `${existingActiveLog.motivo} | ${motivo}` : motivo;
                 }
-                // Si la nueva fecha de producción es más reciente, la actualizamos
                 if (new Date(productionDate) > new Date(existingActiveLog.production_date)) {
                     updateFields.production_date = productionDate;
                 }
@@ -145,12 +154,15 @@ const LogFormModal: React.FC<{
                 if (!error && data) {
                     await supabase.from('activity_logs').insert({
                         action_type: 'Producción Acumulada',
-                        details: `Se sumaron ${producedQuantity} ${selectedProduct?.unit || 'unidades'} a un lote activo de ${selectedProduct?.name || 'producto'}. Total a guardar ahora: ${newQuantity}.`
+                        details: `Se sumaron ${producedQuantity} ${selectedProduct?.unit || 'unidades'} a un lote activo de ${selectedProduct?.name || 'producto'}. Total a guardar ahora: ${newTotal}.`
                     });
                 }
             } else {
-                // Si no hay ninguno activo, insertamos uno nuevo comúnmente
-                const { error, data } = await supabase.from('production_log').insert(payload).select().single();
+                // Insertamos uno nuevo con compatibilidad backwards
+                const { error, data } = await supabase.from('production_log').insert({
+                    ...payload,
+                    quantity: producedQuantity // fall-back
+                }).select().single();
                 logError = error;
                 if (!error && data) {
                     await supabase.from('activity_logs').insert({
@@ -165,7 +177,7 @@ const LogFormModal: React.FC<{
 
         if (logError) {
             console.error('Error saving production log:', logError);
-            alert('Error al registrar la producción: Asegúrate de haber actualizado la base de datos con las nuevas columnas (status, motivo). ' + logError.message);
+            alert('Error al registrar la producción: Asegúrate de haber actualizado la base de datos con las nuevas columnas (cantidad_total, cantidad_restante). ' + logError.message);
             return;
         }
 
@@ -264,22 +276,24 @@ const ProductionLogView: React.FC = () => {
     
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingLog, setEditingLog] = useState<EnrichedProductionLog | undefined>(undefined);
-    const [activeTab, setActiveTab] = useState<ProductionLogStatus>('Para guardar');
+    const [activeTab, setActiveTab] = useState<ProductionLogStatus>('Para empaquetar');
 
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [isProcessingBulk, setIsProcessingBulk] = useState(false);
 
-    // State for Guardado modal
-    const [guardadoPromptLog, setGuardadoPromptLog] = useState<EnrichedProductionLog | null>(null);
-    const [guardadoQuantityValue, setGuardadoQuantityValue] = useState<string>('');
+    // State for Partial Process modal
+    const [actionLog, setActionLog] = useState<EnrichedProductionLog | null>(null);
+    const [actionType, setActionType] = useState<'empaquetar' | 'guardar' | null>(null);
+    const [actionQuantityValue, setActionQuantityValue] = useState<string>('');
+    const [actionIsSubmitting, setActionIsSubmitting] = useState(false);
 
     const fetchData = async () => {
         setLoading(true);
         try {
             const logsPromise = supabase.from('production_log')
-                .select('*, workers(name), inventory(name, unit)')
+                .select('*, workers(name), inventory(name, unit, quantity)')
                 .order('created_at', { ascending: false })
-                .limit(400); // Fetch enough to filter
+                .limit(400);
 
             const workersPromise = supabase.from('workers').select('*').order('name');
             const productsPromise = supabase.from('inventory').select('*').eq('type', 'Producto Terminado').order('name');
@@ -291,15 +305,11 @@ const ProductionLogView: React.FC = () => {
             } else {
                 setLogs(logsResult.data as EnrichedProductionLog[]);
             }
-            
-            if (workersResult.error) { console.error("Error fetching workers:", workersResult.error); setWorkers([]); } 
-            else { setWorkers(workersResult.data as Worker[]); }
-
-            if (productsResult.error) { console.error("Error fetching products:", productsResult.error); setProducts([]); } 
-            else { setProducts(productsResult.data as InventoryItem[]); }
+            if (workersResult.data) setWorkers(workersResult.data as Worker[]);
+            if (productsResult.data) setProducts(productsResult.data as InventoryItem[]);
 
         } catch (error: any) {
-            console.error("A critical error occurred while fetching log data:", error);
+            console.error("Critical error fetching log data:", error);
         } finally {
             setLoading(false);
         }
@@ -314,148 +324,149 @@ const ProductionLogView: React.FC = () => {
         setSelectedIds(new Set());
     };
 
-    const toggleSelection = (id: number) => {
-        const newSet = new Set(selectedIds);
-        if (newSet.has(id)) newSet.delete(id);
-        else newSet.add(id);
-        setSelectedIds(newSet);
-    };
-
     const handleDelete = async (logId: number) => {
         if (!window.confirm("¿Estás seguro de que quieres eliminar este registro?")) return;
         const { error } = await supabase.from('production_log').delete().eq('id', logId);
         if (error) alert("Error al eliminar el registro.");
-        else {
-            setLogs(currentLogs => currentLogs.filter(log => log.id !== logId));
-            if (selectedIds.has(logId)) {
-                const newSet = new Set(selectedIds);
-                newSet.delete(logId);
-                setSelectedIds(newSet);
-            }
-        }
+        else fetchData();
     };
 
-    const handleUpdateStatus = async (log: EnrichedProductionLog, newStatus: ProductionLogStatus) => {
-        if (newStatus === 'Activar' as any) {
-             const qtyToActivate = typeof log.stored_quantity === 'number' ? log.stored_quantity : log.quantity;
-             if (!window.confirm(`¿Confirmas que deseas Activar esta producción? Se sumarán ${qtyToActivate} ${log.inventory?.unit} al inventario.`)) return;
-
-             try {
-                // Call atomic transaction to guarantee no double counting
-                const { error: rpcError } = await supabase.rpc('activate_production_logs', {
-                    log_ids: [log.id]
-                });
-
-                if (rpcError) {
-                    throw new Error("Si ves esto, asegúrate de correr el código SQL en Supabase primero. Detalle: " + rpcError.message);
-                }
-
-                alert("¡Producción activada e inventario actualizado con éxito!");
-                fetchData();
-             } catch (err: any) {
-                 console.error(err);
-                 alert("Error al activar la producción: " + err.message);
-             }
-        } else if (newStatus === 'Guardado') {
-             setGuardadoPromptLog(log);
-             setGuardadoQuantityValue(log.quantity.toString());
-             return;
-        } else {
-             const { error } = await supabase.from('production_log').update({ status: newStatus }).eq('id', log.id);
-             if (error) alert("Error cambiando estado.");
-             else {
-                 fetchData();
-             }
-        }
+    // The manual bulk "Activar" is deprecated in favor of 'Procesar parte' direct logic 
+    // but we can keep it for legacy Guardado support if they still need it. Or just fail gracefully.
+    
+    const handleRevertStatus = async (log: EnrichedProductionLog) => {
+        const { error } = await supabase.from('production_log').update({ status: 'Para empaquetar' }).eq('id', log.id);
+        if (error) alert("Error revirtiendo.");
+        else fetchData();
     };
 
-    const handleBulkUpdateStatus = async (newStatus: ProductionLogStatus) => {
-        if (!selectedIds.size) return;
+    const handleAction = async () => {
+        if (!actionLog) return;
+        const parsedInput = parseFloat(actionQuantityValue || '0');
         
-        if (newStatus === 'Guardado') {
-            alert("No se puede mover a 'Guardado' en lote porque se requiere confirmar la 'cantidad guardada' de cada producto individualmente. Por favor, hazlo uno por uno.");
+        if (isNaN(parsedInput) || parsedInput <= 0) {
+            alert('Por favor, ingresa una cantidad válida mayor a 0.');
             return;
         }
 
-        setIsProcessingBulk(true);
-        const { error } = await supabase.from('production_log').update({ status: newStatus }).in('id', Array.from(selectedIds));
-        if (error) {
-            alert('Error: ' + error.message);
-        } else {
-            setSelectedIds(new Set());
-            fetchData();
+        const logRemaining = actionLog.cantidad_restante ?? actionLog.quantity ?? 0;
+        
+        if (parsedInput > logRemaining) {
+            alert(`La cantidad procesada (${parsedInput}) no puede ser mayor a la cantidad restante (${logRemaining}).`);
+            return;
         }
-        setIsProcessingBulk(false);
-    };
 
-    const handleBulkActivar = async () => {
-        if (!selectedIds.size) return;
-        if (!window.confirm(`¿Confirmas que deseas Activar ${selectedIds.size} producciones? Se sumarán al inventario.`)) return;
-
-        setIsProcessingBulk(true);
+        setActionIsSubmitting(true);
         try {
-            const { error: rpcError } = await supabase.rpc('activate_production_logs', {
-                log_ids: Array.from(selectedIds)
-            });
+            const newRestante = logRemaining - parsedInput;
+            const newStatus = newRestante <= 0 ? 'Archivado' : actionLog.status;
+            
+            if (actionType === 'empaquetar') {
+                // 1. Move to "Para guardar"
+                const { data: existingActiveLog } = await supabase
+                    .from('production_log')
+                    .select('*')
+                    .eq('inventory_id', actionLog.inventory_id)
+                    .eq('status', 'Para guardar')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
 
-            if (rpcError) {
-                throw new Error("Asegúrate de correr el código SQL en Supabase primero. Detalle: " + rpcError.message);
+                if (existingActiveLog) {
+                    const prevTotal = existingActiveLog.cantidad_total ?? existingActiveLog.quantity ?? 0;
+                    const prevRestante = existingActiveLog.cantidad_restante ?? existingActiveLog.stored_quantity ?? prevTotal;
+                    
+                    const newTotal = prevTotal + parsedInput;
+                    const newPGRestante = prevRestante + parsedInput;
+                    
+                    const { error } = await supabase.from('production_log').update({ 
+                        cantidad_total: newTotal,
+                        cantidad_restante: newPGRestante,
+                        quantity: newPGRestante, // keep quantity in sync with pending Amount
+                        production_date: new Date().toISOString().split('T')[0]
+                    }).eq('id', existingActiveLog.id);
+                    if (error) throw error;
+                } else {
+                    const { error } = await supabase.from('production_log').insert({
+                        worker_id: actionLog.worker_id,
+                        inventory_id: actionLog.inventory_id,
+                        cantidad_total: parsedInput,
+                        cantidad_restante: parsedInput,
+                        quantity: parsedInput,
+                        production_date: new Date().toISOString().split('T')[0],
+                        motivo: 'Empaquetado y pendiente de guardar',
+                        status: 'Para guardar'
+                    });
+                    if (error) throw error;
+                }
+
+                // Update current Para empaquetar log
+                const { error: logErr } = await supabase.from('production_log')
+                    .update({ 
+                        cantidad_restante: newRestante, 
+                        quantity: newRestante,
+                        status: newStatus 
+                    })
+                    .eq('id', actionLog.id);
+                if (logErr) throw logErr;
+
+                await supabase.from('activity_logs').insert({
+                    action_type: 'Producción Empaquetada',
+                    details: `Se empaquetaron ${parsedInput} ${actionLog.inventory?.unit} del lote de ${actionLog.inventory?.name}. Listos para guardar.`
+                });
+            } else if (actionType === 'guardar') {
+                // 1. Update Inventory 
+                const { data: invData, error: invFetchErr } = await supabase.from('inventory').select('quantity').eq('id', actionLog.inventory_id).single();
+                if (invFetchErr) throw invFetchErr;
+
+                const { error: invErr } = await supabase.from('inventory')
+                    .update({ quantity: invData.quantity + parsedInput })
+                    .eq('id', actionLog.inventory_id);
+                if (invErr) throw invErr;
+
+                // Log movement
+                await supabase.from('inventory_movements').insert({
+                    inventory_id: actionLog.inventory_id,
+                    type: 'Entrada',
+                    quantity_change: parsedInput,
+                    reference: 'Guardado de Producción',
+                    details: `Se empaquetaron y guardaron en inventario finalmente ${parsedInput} ${actionLog.inventory?.unit} del lote de producción.`
+                });
+
+                // 2. Update current Para guardar log
+                const { error: logErr } = await supabase.from('production_log')
+                    .update({ 
+                        cantidad_restante: newRestante, 
+                        quantity: newRestante,
+                        status: newStatus 
+                    })
+                    .eq('id', actionLog.id);
+                if (logErr) throw logErr;
+
+                // 3. Activity Log
+                await supabase.from('activity_logs').insert({
+                    action_type: 'Producción Guardada en Inventario',
+                    details: `Se sumaron al stock ${parsedInput} ${actionLog.inventory?.unit} del lote de ${actionLog.inventory?.name}.`
+                });
             }
 
-            alert("¡Producciones activadas e inventario actualizado con éxito!");
-            setSelectedIds(new Set());
             fetchData();
+            setActionLog(null);
+            setActionType(null);
+            setActionQuantityValue('');
         } catch (err: any) {
-            console.error(err);
-            alert("Error al activar producciones: " + err.message);
+            alert("Error al procesar: " + err.message);
         } finally {
-            setIsProcessingBulk(false);
+            setActionIsSubmitting(false);
         }
     };
 
-    const handleBulkDelete = async () => {
-        if (!selectedIds.size) return;
-        if (!window.confirm(`¿Estás seguro de que deseas eliminar ${selectedIds.size} registros?`)) return;
-        setIsProcessingBulk(true);
-        const { error } = await supabase.from('production_log').delete().in('id', Array.from(selectedIds));
-        if (error) {
-            alert('Error eliminando: ' + error.message);
-        } else {
-            setSelectedIds(new Set());
-            fetchData();
-        }
-        setIsProcessingBulk(false);
-    };
-
-    const handleOpenEdit = (log: EnrichedProductionLog) => {
-        setEditingLog(log);
-        setIsFormOpen(true);
-    };
-
-    const handleCloseForm = () => {
-        setIsFormOpen(false);
-        setEditingLog(undefined);
-    };
-
-    const handleSaveForm = () => {
-        handleCloseForm();
-        fetchData();
-    };
-
-    // Filter logs with defaults in case 'status' is null (from old data)
-    const logsParaGuardar = logs.filter(l => (l.status || 'Para guardar') === 'Para guardar');
-    const logsGuardado = logs.filter(l => l.status === 'Guardado');
+    // Filter logs properly mapping old legacy values
+    const logsParaEmpaquetar = logs.filter(l => (l.status === 'Para empaquetar' || !l.status));
+    const logsParaGuardar = logs.filter(l => l.status === 'Para guardar' || l.status === 'Guardado'); // For legacy support if any are stuck here
     const logsArchivado = logs.filter(l => l.status === 'Archivado');
 
-    const currentList = activeTab === 'Para guardar' ? logsParaGuardar : activeTab === 'Guardado' ? logsGuardado : logsArchivado;
-
-    const toggleSelectAll = () => {
-        if (selectedIds.size === currentList.length && currentList.length > 0) {
-            setSelectedIds(new Set());
-        } else {
-            setSelectedIds(new Set(currentList.map(l => l.id)));
-        }
-    };
+    const currentList = activeTab === 'Para empaquetar' ? logsParaEmpaquetar : activeTab === 'Para guardar' ? logsParaGuardar : logsArchivado;
 
     return (
         <div>
@@ -470,192 +481,183 @@ const ProductionLogView: React.FC = () => {
                 <LogFormModal 
                     workers={workers} 
                     products={products} 
-                    onClose={handleCloseForm} 
-                    onSave={handleSaveForm} 
+                    onClose={() => setIsFormOpen(false)} 
+                    onSave={() => { setIsFormOpen(false); fetchData(); }} 
                     initialData={editingLog} 
                 />
             )}
 
-            {guardadoPromptLog && (
+            {/* Modal para Empaquetar / Guardar */}
+            {actionLog && actionType && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-                        <h3 className="text-lg font-bold mb-4 text-gray-800">Confirmar Cantidad Guardada</h3>
+                        <h3 className="text-lg font-bold mb-4 text-gray-800">
+                            {actionType === 'empaquetar' ? 'Empaquetar Cantidad' : 'Guardar en Inventario'}
+                        </h3>
                         <p className="text-sm text-gray-600 mb-4">
-                            Ingresa la cantidad final guardada para <strong>{guardadoPromptLog.inventory?.name}</strong>.
+                            {actionType === 'empaquetar' ? 
+                                <span>Ingresa la cantidad que deseas <strong>empaquetar</strong> (se moverá a Para Guardar) para <strong>{actionLog.inventory?.name}</strong>.</span> 
+                                : 
+                                <span>Ingresa la cantidad que deseas <strong>guardar en el inventario final</strong> para <strong>{actionLog.inventory?.name}</strong>.</span>
+                            }
                             <br/>
-                            <span className="text-gray-500 mt-1 inline-block">Cantidad a guardar (producida): <strong>{guardadoPromptLog.quantity}</strong> {guardadoPromptLog.inventory?.unit}</span>
+                            <span className="text-gray-500 mt-1 inline-block">
+                                Total del lote aquí: <strong>{Number((actionLog.cantidad_total ?? actionLog.quantity ?? 0).toFixed(2))}</strong> {actionLog.inventory?.unit} <br/>
+                                Restante sin procesar: <strong>{Number((actionLog.cantidad_restante ?? actionLog.quantity ?? 0).toFixed(2))}</strong> {actionLog.inventory?.unit}
+                            </span>
                         </p>
                         
-                        {['unidades', 'docenas'].includes((guardadoPromptLog.inventory?.unit || '').toLowerCase()) ? (
-                            <div className="flex space-x-2 mb-6">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Unidades</label>
-                                    <input 
-                                        type="text" 
-                                        inputMode="decimal"
-                                        value={guardadoQuantityValue} 
-                                        onChange={e => {
-                                            const val = e.target.value.replace(',', '.');
-                                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                                                setGuardadoQuantityValue(val);
-                                            }
-                                        }}
-                                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Unidades"
-                                    />
+                        <div className="mb-6">
+                            {['unidades', 'docenas'].includes((actionLog.inventory?.unit || '').toLowerCase()) ? (
+                                (() => {
+                                    const isDocenas = (actionLog.inventory?.unit || '').toLowerCase() === 'docenas';
+                                    const displayUnits = isDocenas 
+                                        ? (actionQuantityValue ? (parseFloat(actionQuantityValue) * 12).toString() : '')
+                                        : actionQuantityValue;
+                                    const displayDozens = isDocenas
+                                        ? actionQuantityValue
+                                        : (actionQuantityValue ? (parseFloat(actionQuantityValue) / 12).toFixed(2) : '');
+
+                                    return (
+                                        <div className="flex space-x-2">
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Unidades</label>
+                                                <input 
+                                                    type="text" 
+                                                    inputMode="decimal"
+                                                    value={displayUnits} 
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(',', '.');
+                                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                            if (isDocenas) {
+                                                                 const doz = val === '' ? '' : (parseFloat(val) / 12).toString();
+                                                                 setActionQuantityValue(doz);
+                                                            } else {
+                                                                 setActionQuantityValue(val);
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Unidades"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-medium text-gray-500 mb-1">Docenas</label>
+                                                <input 
+                                                    type="text" 
+                                                    inputMode="decimal"
+                                                    value={displayDozens} 
+                                                    onChange={e => {
+                                                        const val = e.target.value.replace(',', '.');
+                                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                            if (isDocenas) {
+                                                                 setActionQuantityValue(val);
+                                                            } else {
+                                                                 const units = val === '' ? '' : (parseFloat(val) * 12).toString();
+                                                                 setActionQuantityValue(units);
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Docenas"
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })()
+                            ) : (
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Cantidad a procesar ahora:</label>
+                                    <div className="relative rounded-md shadow-sm">
+                                        <input 
+                                            type="number" 
+                                            step="any"
+                                            value={actionQuantityValue} 
+                                            onChange={e => setActionQuantityValue(e.target.value)}
+                                            className="w-full pr-16 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                            autoFocus
+                                            max={actionLog.cantidad_restante ?? actionLog.quantity}
+                                        />
+                                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                            <span className="text-gray-500 text-sm">{actionLog.inventory?.unit || 'Unidad'}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Docenas</label>
-                                    <input 
-                                        type="text" 
-                                        inputMode="decimal"
-                                        value={guardadoQuantityValue ? (parseFloat(guardadoQuantityValue) / 12).toFixed(2) : ''} 
-                                        onChange={e => {
-                                            const val = e.target.value.replace(',', '.');
-                                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                                                if (val === '') {
-                                                    setGuardadoQuantityValue('');
-                                                } else {
-                                                    const units = parseFloat(val) * 12;
-                                                    setGuardadoQuantityValue(Number.isInteger(units) ? units.toString() : units.toFixed(2));
-                                                }
-                                            }
-                                        }}
-                                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Docenas"
-                                    />
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="relative rounded-md shadow-sm mb-6">
-                                <input 
-                                    type="number" 
-                                    step="any"
-                                    value={guardadoQuantityValue} 
-                                    onChange={e => setGuardadoQuantityValue(e.target.value)}
-                                    className="w-full pr-16 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                    autoFocus
-                                />
-                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                    <span className="text-gray-500 text-sm">{guardadoPromptLog.inventory?.unit || 'Unidad'}</span>
-                                </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
                         
                         <div className="flex justify-end gap-3">
-                            <button onClick={() => setGuardadoPromptLog(null)} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition font-medium">Cancelar</button>
-                            <button onClick={async () => {
-                                const parsedInput = parseFloat(guardadoQuantityValue);
-                                if (isNaN(parsedInput) || parsedInput <= 0) {
-                                    alert('Por favor, ingresa una cantidad válida mayor a 0.');
-                                    return;
-                                }
-                                if (parsedInput > guardadoPromptLog.quantity) {
-                                    alert('La cantidad guardada no puede ser mayor a la cantidad a guardar (producida).');
-                                    return;
-                                }
-                                
-                                const { error } = await supabase.from('production_log').update({ status: 'Guardado', stored_quantity: parsedInput }).eq('id', guardadoPromptLog.id);
-                                if (error) {
-                                    alert("Error cambiando estado.");
-                                } else {
-                                    await supabase.from('activity_logs').insert({
-                                        action_type: 'Estado a Guardado',
-                                        details: `Lote de ${parsedInput} ${guardadoPromptLog.inventory?.unit || 'unid.'} de ${guardadoPromptLog.inventory?.name || 'producto'} marcado como Guardado (Producido: ${guardadoPromptLog.quantity}).`
-                                    });
-                                    fetchData();
-                                }
-                                setGuardadoPromptLog(null);
-                            }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium shadow-sm">Confirmar</button>
+                            <button onClick={() => { setActionLog(null); setActionType(null); }} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition font-medium">Cancelar</button>
+                            <button onClick={handleAction} disabled={actionIsSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium shadow-sm disabled:opacity-50">
+                                {actionIsSubmitting ? 'Procesando...' : 'Confirmar'}
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
             
             <div className="border-b border-gray-200">
-                <nav className="-mb-px flex space-x-8">
+                <nav className="-mb-px flex space-x-8 overflow-x-auto">
+                    <button onClick={() => changeTab('Para empaquetar')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'Para empaquetar' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                        Para empaquetar ({logsParaEmpaquetar.length})
+                    </button>
                     <button onClick={() => changeTab('Para guardar')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'Para guardar' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
                         Para guardar ({logsParaGuardar.length})
-                    </button>
-                    <button onClick={() => changeTab('Guardado')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'Guardado' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                        Guardado ({logsGuardado.length})
                     </button>
                     <button onClick={() => changeTab('Archivado')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'Archivado' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
                         Archivado
                     </button>
                 </nav>
             </div>
-            
-            <div className="my-4">
-                {activeTab !== 'Archivado' && currentList.length > 0 && (
-                    <div className="flex items-center justify-between p-3 bg-gray-100 rounded-lg border">
-                        <label className="flex items-center space-x-2 cursor-pointer">
-                            <input type="checkbox" className="rounded text-blue-600 focus:ring-blue-500 w-5 h-5" 
-                                checked={selectedIds.size > 0 && selectedIds.size === currentList.length}
-                                onChange={toggleSelectAll}
-                            />
-                            <span className="font-medium text-gray-700 select-none">Seleccionar todos</span>
-                        </label>
-                        {selectedIds.size > 0 && (
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-semibold text-gray-600 self-center hidden sm:block mr-2">{selectedIds.size} seleccionados</span>
-                                {activeTab === 'Para guardar' && (
-                                    <>
-                                        <button disabled={isProcessingBulk} onClick={handleBulkDelete} className="px-3 py-1.5 text-red-600 bg-white border border-gray-300 hover:bg-red-50 rounded text-sm transition font-medium">Eliminar</button>
-                                        <button disabled={true} onClick={() => handleBulkUpdateStatus('Guardado')} title="No disponible en lote. Se requiere confirmar la cantidad guardada individualmente." className="px-4 py-1.5 bg-gray-400 text-white rounded cursor-not-allowed shadow-sm text-sm transition font-medium">Pasar a Guardado</button>
-                                    </>
-                                )}
-                                {activeTab === 'Guardado' && (
-                                    <>
-                                        <button disabled={isProcessingBulk} onClick={() => handleBulkUpdateStatus('Para guardar')} className="px-3 py-1.5 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded text-sm transition font-medium">Revertir</button>
-                                        <button disabled={isProcessingBulk} onClick={handleBulkActivar} className="px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 text-sm transition shadow-sm font-medium">Activar {selectedIds.size} Registros</button>
-                                    </>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
 
-            <Card className="min-h-[400px]">
-                 {loading ? (
-                    <p className="text-center text-gray-500 py-10">Cargando registros...</p>
-                 ) : currentList.length > 0 ? (
-                    <div className="space-y-4">
-                        {currentList.map(log => (
-                            <div key={log.id} className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-gray-50 rounded-lg border hover:shadow-sm transition gap-4">
-                                <div className="flex items-start gap-3 flex-1 w-full">
-                                    {activeTab !== 'Archivado' && (
-                                        <input type="checkbox" className="mt-1 rounded text-blue-600 focus:ring-blue-500 w-5 h-5 cursor-pointer"
-                                            checked={selectedIds.has(log.id)}
-                                            onChange={() => toggleSelection(log.id)}
-                                        />
-                                    )}
+            <div className="my-6">
+                <Card className="min-h-[400px]">
+                     {loading ? (
+                        <p className="text-center text-gray-500 py-10">Cargando registros...</p>
+                     ) : currentList.length > 0 ? (
+                        <div className="space-y-4">
+                            {currentList.map(log => {
+                                const total = log.cantidad_total ?? log.quantity ?? 0;
+                                const remaining = log.cantidad_restante ?? log.quantity ?? 0;
+                                const processed = total - remaining;
+                                const percentage = total > 0 ? ((processed / total) * 100).toFixed(0) : 0;
+
+                                return (
+                                <div key={log.id} className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-gray-50 rounded-lg border hover:shadow-sm transition gap-4">
                                     <div className="flex-1 w-full">
-                                        <div className="flex items-center gap-2 mb-1">
+                                        <div className="flex items-center gap-2 mb-2">
                                             <span className="font-semibold text-gray-800 text-lg">{log.inventory?.name || 'Producto Desconocido'}</span>
-                                            <Badge color={activeTab === 'Para guardar' ? 'blue' : activeTab === 'Guardado' ? 'green' : 'gray'}>
-                                                {log.status || 'Para guardar'}
+                                            <Badge color={activeTab === 'Para empaquetar' ? 'blue' : activeTab === 'Para guardar' ? 'yellow' : 'gray'}>
+                                                {log.status === 'Guardado' ? 'Para guardar' : log.status}
                                             </Badge>
                                         </div>
-                                        <div className="text-gray-600 flex flex-col gap-1 py-1">
-                                            <p>
-                                                Cantidad a guardar: <span className="font-bold">{log.quantity}</span> {log.inventory?.unit}
-                                            </p>
-                                            {(activeTab === 'Guardado' || activeTab === 'Archivado') && typeof log.stored_quantity === 'number' && (
-                                                <div className="flex items-center gap-2">
-                                                    <p>
-                                                        Cantidad guardada: <span className="font-bold text-gray-800">{log.stored_quantity}</span> {log.inventory?.unit}
-                                                    </p>
-                                                    {log.quantity !== log.stored_quantity && (
-                                                        <span className="text-xs font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded border border-amber-200">
-                                                            Diferencia: {log.quantity - log.stored_quantity}
-                                                        </span>
-                                                    )}
+                                        
+                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white p-3 rounded border my-2">
+                                            <div>
+                                                <p className="text-xs text-gray-500 font-medium">TOTAL LOTE</p>
+                                                <p className="text-lg font-bold text-gray-800">{Number(total.toFixed(2))} <span className="text-sm font-normal text-gray-500">{log.inventory?.unit}</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500 font-medium">PROCESADO</p>
+                                                <p className="text-lg font-bold text-green-600">{Number(processed.toFixed(2))} <span className="text-sm font-normal text-gray-500">{log.inventory?.unit}</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500 font-medium">RESTANTE</p>
+                                                <p className="text-lg font-bold text-blue-600">{Number(remaining.toFixed(2))} <span className="text-sm font-normal text-gray-500">{log.inventory?.unit}</span></p>
+                                            </div>
+                                            <div className="flex flex-col justify-center">
+                                                <div className="flex items-center justify-between text-xs mb-1">
+                                                    <span className="text-gray-500">Progreso</span>
+                                                    <span className="font-medium">{percentage}%</span>
                                                 </div>
-                                            )}
+                                                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                                    <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="text-sm text-gray-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+
+                                        <div className="text-sm text-gray-500 mt-2 flex flex-wrap gap-x-4 gap-y-1">
                                             <span>📅 {new Date(log.production_date + 'T00:00:00').toLocaleDateString()}</span>
                                             {log.workers?.name && <span>👤 {log.workers.name}</span>}
                                             <span title={new Date(log.created_at).toLocaleString()}>⏱ {new Date(log.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
@@ -666,46 +668,55 @@ const ProductionLogView: React.FC = () => {
                                             </p>
                                         )}
                                     </div>
+                                    
+                                    <div className="flex flex-wrap gap-2 w-full md:w-auto mt-2 md:mt-0 items-center justify-end">
+                                        {activeTab === 'Para empaquetar' && (
+                                            <>
+                                                {remaining > 0 && (
+                                                    <button onClick={() => {
+                                                        setActionLog(log);
+                                                        setActionType('empaquetar');
+                                                        setActionQuantityValue(remaining.toString());
+                                                    }} className="px-4 py-2 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 transition shadow-sm">
+                                                        Empaquetar Parte
+                                                    </button>
+                                                )}
+                                                <button onClick={() => handleDelete(log.id)} className="p-2 bg-white border border-gray-300 text-red-600 rounded hover:bg-red-50 transition" title="Eliminar registro">
+                                                    <TrashIcon className="w-5 h-5 mx-auto" />
+                                                </button>
+                                            </>
+                                        )}
+                                        {activeTab === 'Para guardar' && (
+                                            <div className="flex gap-2">
+                                                {remaining > 0 && (
+                                                    <button onClick={() => {
+                                                        setActionLog(log);
+                                                        setActionType('guardar');
+                                                        setActionQuantityValue(remaining.toString());
+                                                    }} className="px-4 py-2 bg-green-600 text-white font-medium rounded hover:bg-green-700 transition shadow-sm">
+                                                        Guardar en Inventario
+                                                    </button>
+                                                )}
+                                                <button onClick={() => handleRevertStatus(log)} className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition text-sm">
+                                                    Revertir a Para empaquetar
+                                                </button>
+                                            </div>
+                                        )}
+                                        {activeTab === 'Archivado' && (
+                                             <span className="text-sm italic text-gray-400 px-2 py-1 bg-gray-50 rounded">Proceso Completado</span>
+                                        )}
+                                    </div>
                                 </div>
-                                
-                                <div className="flex flex-wrap gap-2 w-full md:w-auto mt-2 md:mt-0 items-center">
-                                    {activeTab === 'Para guardar' && (
-                                        <>
-                                            <button onClick={() => handleOpenEdit(log)} className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition flex-1 md:flex-none text-center">
-                                                Editar
-                                            </button>
-                                            <button onClick={() => handleUpdateStatus(log, 'Guardado')} className="px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex-1 md:flex-none text-center shadow-sm">
-                                                A Guardado
-                                            </button>
-                                            <button onClick={() => handleDelete(log.id)} className="p-1.5 bg-white border border-gray-300 text-red-600 rounded hover:bg-red-50 transition" title="Eliminar registro">
-                                                <TrashIcon className="w-5 h-5 mx-auto" />
-                                            </button>
-                                        </>
-                                    )}
-                                    {activeTab === 'Guardado' && (
-                                        <>
-                                            <button onClick={() => handleUpdateStatus(log, 'Para guardar')} className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition text-sm flex-1 md:flex-none text-center">
-                                                Revertir
-                                            </button>
-                                            <button onClick={() => handleUpdateStatus(log, 'Activar' as any)} className="px-4 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 font-medium transition shadow-sm flex-1 md:flex-none text-center">
-                                                Activar
-                                            </button>
-                                        </>
-                                    )}
-                                    {activeTab === 'Archivado' && (
-                                         <span className="text-sm italic text-gray-400 px-2 py-1 bg-gray-50 rounded">Lectura</span>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                 ) : (
-                    <div className="text-center py-16 text-gray-500">
-                        <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                        <p>No hay registros en este estado.</p>
-                    </div>
-                 )}
-            </Card>
+                            )})}
+                        </div>
+                     ) : (
+                        <div className="text-center py-16 text-gray-500">
+                            <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                            <p>No hay registros en este estado.</p>
+                        </div>
+                     )}
+                </Card>
+            </div>
         </div>
     );
 };
