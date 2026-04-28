@@ -350,9 +350,9 @@
             
             let parsedInput = 0;
             if (actionLog.inventory?.unit?.toLowerCase() === 'docenas') {
-                parsedInput = parseFloat(actionQuantityUnits) / 12;
+                parsedInput = parseFloat(actionQuantityDozens || '0');
             } else {
-                parsedInput = parseFloat(actionQuantityUnits);
+                parsedInput = parseFloat(actionQuantityUnits || '0');
             }
             
             if (isNaN(parsedInput) || parsedInput <= 0) {
@@ -361,10 +361,16 @@
             }
 
             const logRemaining = actionLog.cantidad_restante ?? actionLog.quantity ?? 0;
+            const EPSILON = 0.001;
             
-            if (parsedInput > logRemaining) {
+            if (parsedInput > logRemaining + EPSILON) {
                 alert(`La cantidad procesada (${parsedInput}) no puede ser mayor a la cantidad restante (${logRemaining}).`);
                 return;
+            }
+            
+            // Adjust to exact remaining if difference is tiny floating point error
+            if (parsedInput > logRemaining) {
+                parsedInput = logRemaining;
             }
 
             setActionIsSubmitting(true);
