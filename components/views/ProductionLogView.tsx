@@ -286,6 +286,9 @@ const ProductionLogView: React.FC = () => {
     const [actionType, setActionType] = useState<'empaquetar' | 'guardar' | null>(null);
     const [actionQuantityValue, setActionQuantityValue] = useState<string>('');
     const [actionIsSubmitting, setActionIsSubmitting] = useState(false);
+    
+    // State for delete confirmation
+    const [deleteLogId, setDeleteLogId] = useState<number | null>(null);
 
     const fetchData = async () => {
         setLoading(true);
@@ -324,11 +327,12 @@ const ProductionLogView: React.FC = () => {
         setSelectedIds(new Set());
     };
 
-    const handleDelete = async (logId: number) => {
-        if (!window.confirm("¿Estás seguro de que quieres eliminar este registro?")) return;
-        const { error } = await supabase.from('production_log').delete().eq('id', logId);
-        if (error) alert("Error al eliminar el registro.");
+    const handleDelete = async () => {
+        if (!deleteLogId) return;
+        const { error } = await supabase.from('production_log').delete().eq('id', deleteLogId);
+        if (error) alert("Error al eliminar el registro: " + error.message);
         else fetchData();
+        setDeleteLogId(null);
     };
 
     // The manual bulk "Activar" is deprecated in favor of 'Procesar parte' direct logic 
@@ -401,12 +405,14 @@ const ProductionLogView: React.FC = () => {
                 }
 
                 // Update current Para empaquetar log
+                const updatePayload: any = { 
+                    cantidad_restante: newRestante, 
+                    status: newStatus 
+                };
+                if (newRestante > 0) updatePayload.quantity = newRestante;
+
                 const { error: logErr } = await supabase.from('production_log')
-                    .update({ 
-                        cantidad_restante: newRestante, 
-                        quantity: newRestante,
-                        status: newStatus 
-                    })
+                    .update(updatePayload)
                     .eq('id', actionLog.id);
                 if (logErr) throw logErr;
 
@@ -434,12 +440,14 @@ const ProductionLogView: React.FC = () => {
                 });
 
                 // 2. Update current Para guardar log
+                const updatePayload: any = { 
+                    cantidad_restante: newRestante, 
+                    status: newStatus 
+                };
+                if (newRestante > 0) updatePayload.quantity = newRestante;
+
                 const { error: logErr } = await supabase.from('production_log')
-                    .update({ 
-                        cantidad_restante: newRestante, 
-                        quantity: newRestante,
-                        status: newStatus 
-                    })
+                    .update(updatePayload)
                     .eq('id', actionLog.id);
                 if (logErr) throw logErr;
 
@@ -487,7 +495,25 @@ const ProductionLogView: React.FC = () => {
                 />
             )}
 
-            {/* Modal para Empaquetar / Guardar */}
+            {/* Modal de Confirmación de Eliminación */}
+            {deleteLogId && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center">
+                        <TrashIcon className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                        <h3 className="text-lg font-bold mb-2 text-gray-800">Eliminar Registro</h3>
+                        <p className="text-gray-600 mb-6">
+                            ¿Estás seguro de que quieres eliminar este registro? Esta acción no se puede deshacer.
+                        </p>
+                        <div className="flex justify-center gap-3">
+                            <button onClick={() => setDeleteLogId(null)} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition font-medium">Cancelar</button>
+                            <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium shadow-sm">
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {actionLog && actionType && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
@@ -681,7 +707,7 @@ const ProductionLogView: React.FC = () => {
                                                         Empaquetar Parte
                                                     </button>
                                                 )}
-                                                <button onClick={() => handleDelete(log.id)} className="p-2 bg-white border border-gray-300 text-red-600 rounded hover:bg-red-50 transition" title="Eliminar registro">
+                                                    <button onClick={() => setDeleteLogId(log.id)} className="p-2 bg-white border border-gray-300 text-red-600 rounded hover:bg-red-50 transition" title="Eliminar registro">
                                                     <TrashIcon className="w-5 h-5 mx-auto" />
                                                 </button>
                                             </>
