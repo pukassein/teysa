@@ -105,14 +105,25 @@ const InventorySummary: React.FC<{ items: InventoryItem[] }> = ({ items }) => {
                 <div>
                     <h4 className="text-sm font-semibold text-gray-700 mb-2 border-b pb-1">Stock Bajo o Crítico</h4>
                     <ul className="space-y-2">
-                        {lowStockItems.map(item => (
-                            <li key={item.id} className="flex justify-between items-center text-sm">
-                                <span className="text-gray-800 font-medium truncate pr-2">{item.name}</span>
-                                <span className={`flex-shrink-0 font-bold ${item.quantity === 0 ? 'text-red-600' : 'text-orange-500'}`}>
-                                    {item.quantity} {item.unit}
-                                </span>
-                            </li>
-                        ))}
+                        {lowStockItems.map(item => {
+                            let displayQuantity = item.quantity;
+                            let displayUnit = item.unit;
+                            if (item.unit.toLowerCase() === 'docenas') {
+                                displayQuantity = Math.ceil(item.quantity * 12);
+                                displayUnit = 'unidades';
+                            } else if (item.unit.toLowerCase() === 'unidades') {
+                                displayQuantity = Math.ceil(item.quantity);
+                            }
+
+                            return (
+                                <li key={item.id} className="flex justify-between items-center text-sm">
+                                    <span className="text-gray-800 font-medium truncate pr-2">{item.name}</span>
+                                    <span className={`flex-shrink-0 font-bold ${item.quantity === 0 ? 'text-red-600' : 'text-orange-500'}`}>
+                                        {['unidades', 'docenas'].includes(item.unit.toLowerCase()) ? displayQuantity : Number(displayQuantity).toFixed(2)} {displayUnit}
+                                    </span>
+                                </li>
+                            );
+                        })}
                     </ul>
                 </div>
             ) : (

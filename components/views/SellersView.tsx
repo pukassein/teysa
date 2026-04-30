@@ -81,10 +81,11 @@ const SellerInventoryTable: React.FC<{
                         let quantityInDozens: string | number = '-';
 
                         if (unitLower === 'unidades') {
+                            displayQuantity = Math.ceil(Number(item.quantity));
                             quantityInDozens = (displayQuantity / 12).toFixed(2);
                         } else if (unitLower === 'docenas') {
-                            displayQuantity = displayQuantity * 12;
-                            quantityInDozens = Number(item.quantity).toFixed(2);
+                            displayQuantity = Math.ceil(Number(item.quantity) * 12);
+                            quantityInDozens = (displayQuantity / 12).toFixed(2);
                         }
 
                         return (
@@ -97,7 +98,7 @@ const SellerInventoryTable: React.FC<{
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
                                     {unitLower === 'unidades' || unitLower === 'docenas' 
-                                        ? displayQuantity.toFixed(2) 
+                                        ? displayQuantity
                                         : `${displayQuantity.toFixed(2)} ${item.inventory_item?.unit || ''}`}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -258,7 +259,7 @@ const MovementForm: React.FC<{
                 const num = parseFloat(val);
                 if (!isNaN(num)) {
                     const doz = num / 12;
-                    setQuantityDozens(Number.isInteger(doz) ? doz.toString() : doz.toFixed(2));
+                    setQuantityDozens(doz.toFixed(2));
                 }
             }
         }
@@ -274,7 +275,7 @@ const MovementForm: React.FC<{
                 const num = parseFloat(val);
                 if (!isNaN(num)) {
                     const units = num * 12;
-                    setQuantityUnits(Number.isInteger(units) ? units.toString() : units.toFixed(2));
+                    setQuantityUnits(Math.ceil(units).toString());
                 }
             }
         }
@@ -287,9 +288,9 @@ const MovementForm: React.FC<{
         if (selectedItem) {
             const unit = selectedItem.unit.toLowerCase();
             if (unit === 'docenas') {
-                qty = parseFloat(quantityDozens);
+                qty = parseFloat(quantityUnits || '0') / 12;
             } else {
-                qty = parseFloat(quantityUnits);
+                qty = parseFloat(quantityUnits || '0');
             }
         }
 
