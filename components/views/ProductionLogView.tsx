@@ -4,6 +4,7 @@
     import Card from '../ui/Card';
     import Badge from '../ui/Badge';
     import TrashIcon from '../icons/TrashIcon';
+import EditIcon from '../icons/EditIcon';
     import SearchableSelect from '../ui/SearchableSelect';
 
     type EnrichedProductionLog = ProductionLog & {
@@ -109,8 +110,29 @@
 
             let logError;
             if (initialData) {
-                // Keep original amount but logic for editing needs more thought if partial processed. Overriding fully for now.
-                const { error } = await supabase.from('production_log').update(payload).eq('id', initialData.id);
+                const prevTotal = initialData.cantidad_total ?? initialData.quantity ?? 0;
+                const prevRestante = initialData.cantidad_restante ?? initialData.quantity ?? 0;
+                const processed = prevTotal - prevRestante;
+                
+                if (producedQuantity < processed) {
+                    alert(`No puedes establecer el total a menos de lo que ya se procesó (${processed}).`);
+                    setIsSubmitting(false);
+                    return;
+                }
+                
+                const newRestante = producedQuantity - processed;
+                
+                const editPayload = {
+                    worker_id: workerId ? parseInt(workerId) : null,
+                    inventory_id: producedInventoryId,
+                    cantidad_total: producedQuantity,
+                    cantidad_restante: newRestante,
+                    quantity: newRestante,
+                    production_date: productionDate,
+                    motivo: motivo,
+                };
+                
+                const { error } = await supabase.from('production_log').update(editPayload).eq('id', initialData.id);
                 logError = error;
             } else {
                 // Buscamos si ya existe un registro activo (Para empaquetar) para este mismo producto
@@ -340,9 +362,53 @@
         // but we can keep it for legacy Guardado support if they still need it. Or just fail gracefully.
         
         const handleRevertStatus = async (log: EnrichedProductionLog) => {
-            const { error } = await supabase.from('production_log').update({ status: 'Para empaquetar' }).eq('id', log.id);
-            if (error) alert("Error revirtiendo.");
-            else fetchData();
+            let { data: existingLog } = await supabase
+                .from('production_log')
+                .select('*')
+                .eq('inventory_id', log.inventory_id)
+                .eq('status', 'Para empaquetar')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (!existingLog) {
+                const { data: archivedLog } = await supabase
+                    .from('production_log')
+                    .select('*')
+                    .eq('inventory_id', log.inventory_id)
+                    .eq('status', 'Archivado')
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (archivedLog) {
+                    existingLog = archivedLog;
+                }
+            }
+
+            if (existingLog) {
+                const currentRemaining = log.cantidad_restante ?? log.quantity ?? 0;
+                
+                const existingTotal = existingLog.cantidad_total ?? existingLog.quantity ?? 0;
+                const existingRestante = existingLog.cantidad_restante ?? existingLog.quantity ?? 0;
+
+                const newRestante = existingRestante + currentRemaining;
+                const { error } = await supabase.from('production_log').update({
+                    cantidad_total: Math.max(existingTotal, newRestante),
+                    cantidad_restante: newRestante,
+                    quantity: newRestante,
+                    status: 'Para empaquetar'
+                }).eq('id', existingLog.id);
+
+                if (!error) {
+                    await supabase.from('production_log').delete().eq('id', log.id);
+                } else {
+                    alert("Error revirtiendo.");
+                }
+            } else {
+                const { error } = await supabase.from('production_log').update({ status: 'Para empaquetar' }).eq('id', log.id);
+                if (error) alert("Error revirtiendo.");
+            }
+            fetchData();
         };
 
         const handleAction = async () => {
@@ -510,7 +576,7 @@
             <div>
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-gray-800">Registro de Producción</h2>
-                    <button onClick={() => setIsFormOpen(true)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 shadow-sm transition">
+                    <button onClick={() => { setEditingLog(undefined); setIsFormOpen(true); }} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 shadow-sm transition">
                         + Nuevo Registro
                     </button>
                 </div>
@@ -519,8 +585,8 @@
                     <LogFormModal 
                         workers={workers} 
                         products={products} 
-                        onClose={() => setIsFormOpen(false)} 
-                        onSave={() => { setIsFormOpen(false); fetchData(); }} 
+                        onClose={() => { setEditingLog(undefined); setIsFormOpen(false); }} 
+                        onSave={() => { setEditingLog(undefined); setIsFormOpen(false); fetchData(); }} 
                         initialData={editingLog} 
                     />
                 )}
@@ -722,6 +788,13 @@
                                         </div>
                                         
                                         <div className="flex flex-wrap gap-2 w-full md:w-auto mt-2 md:mt-0 items-center justify-end">
+                                            <button 
+                                                onClick={() => { setEditingLog(log); setIsFormOpen(true); }} 
+                                                className="p-2 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-50 transition mr-2" 
+                                                title="Editar registro"
+                                            >
+                                                <EditIcon className="w-5 h-5 mx-auto" />
+                                            </button>
                                             {activeTab === 'Para empaquetar' && (
                                                 <>
                                                     {remaining > 0 && (

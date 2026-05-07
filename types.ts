@@ -46,7 +46,7 @@ export interface ProductionGoal {
     deadline: string;
 }
 
-export type Brand = 'Duramaxi' | 'Avanty' | 'Diletta' | 'Generica';
+export type Brand = 'Duramaxi' | 'Avanty' | 'Base Base' | 'Generica';
 
 export interface InventoryItem {
     id: number;

@@ -82,62 +82,6 @@ const KanbanColumn: React.FC<{
     </div>
 );
 
-const InventorySummary: React.FC<{ items: InventoryItem[] }> = ({ items }) => {
-    const lowStockItems = items.filter(item => item.quantity <= item.low_stock_threshold).slice(0, 5);
-    const hasLowStock = lowStockItems.length > 0;
-
-    return (
-        <Card title="Resumen de Inventario" className="h-full">
-            <div className="flex justify-between items-center mb-4">
-                <div>
-                    <p className="text-3xl font-bold text-gray-800">{items.length}</p>
-                    <p className="text-sm font-medium text-gray-500">Productos Totales</p>
-                </div>
-                {hasLowStock && (
-                    <div className="text-right">
-                        <p className="text-xl font-bold text-orange-500">{lowStockItems.length}</p>
-                        <p className="text-sm font-medium text-gray-500">Alertas de Stock</p>
-                    </div>
-                )}
-            </div>
-            
-            {hasLowStock ? (
-                <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2 border-b pb-1">Stock Bajo o Crítico</h4>
-                    <ul className="space-y-2">
-                        {lowStockItems.map(item => {
-                            let displayQuantity = item.quantity;
-                            let displayUnit = item.unit;
-                            if (item.unit.toLowerCase() === 'docenas') {
-                                displayQuantity = Math.ceil(item.quantity * 12);
-                                displayUnit = 'unidades';
-                            } else if (item.unit.toLowerCase() === 'unidades') {
-                                displayQuantity = Math.ceil(item.quantity);
-                            }
-
-                            return (
-                                <li key={item.id} className="flex justify-between items-center text-sm">
-                                    <span className="text-gray-800 font-medium truncate pr-2">{item.name}</span>
-                                    <span className={`flex-shrink-0 font-bold ${item.quantity === 0 ? 'text-red-600' : 'text-orange-500'}`}>
-                                        {['unidades', 'docenas'].includes(item.unit.toLowerCase()) ? displayQuantity : Number(displayQuantity).toFixed(2)} {displayUnit}
-                                    </span>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                </div>
-            ) : (
-                <div className="mt-6 text-center text-green-600">
-                    <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="text-sm font-medium">Todo el inventario en niveles óptimos.</p>
-                </div>
-            )}
-        </Card>
-    );
-};
-
 const DashboardView: React.FC = () => {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [workers, setWorkers] = useState<Worker[]>([]);
@@ -207,7 +151,7 @@ const DashboardView: React.FC = () => {
     return (
         <div className="flex flex-col space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <div className="lg:col-span-3">
+                <div className="lg:col-span-4">
                     <Card title="Visibilidad de la Línea de Producción" className="!p-0 h-full">
                          {loading ? (
                             <div className="p-8 text-center text-gray-500">Cargando datos de producción...</div>
@@ -219,16 +163,6 @@ const DashboardView: React.FC = () => {
                             </div>
                         )}
                     </Card>
-                </div>
-                
-                <div className="lg:col-span-1">
-                    {loading ? (
-                         <Card title="Resumen de Inventario" className="h-full">
-                             <div className="p-8 text-center text-gray-500 text-sm">Cargando inventario...</div>
-                         </Card>
-                    ) : (
-                        <InventorySummary items={inventoryItems} />
-                    )}
                 </div>
             </div>
 

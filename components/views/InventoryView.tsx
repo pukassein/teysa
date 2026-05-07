@@ -7,7 +7,7 @@ import Badge from '../ui/Badge';
 import SearchIcon from '../icons/SearchIcon';
 import UndoIcon from '../icons/UndoIcon';
 
-const brandOptions: Brand[] = ['Duramaxi', 'Avanty', 'Diletta', 'Generica'];
+const brandOptions: Brand[] = ['Duramaxi', 'Avanty', 'Base Base', 'Generica'];
 
 const InventoryItemForm: React.FC<{
     item?: InventoryItem;
@@ -410,7 +410,7 @@ const getBrandColor = (brand: Brand): 'blue' | 'green' | 'yellow' | 'gray' => {
     switch(brand) {
         case 'Duramaxi': return 'blue';
         case 'Avanty': return 'green';
-        case 'Diletta': return 'yellow';
+        case 'Base Base': return 'yellow';
         case 'Generica': return 'gray';
         default: return 'gray';
     }
@@ -787,59 +787,7 @@ const InventoryView: React.FC = () => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">Control de Inventario</h2>
                 {!isFormOpen && (
-                     <div className="flex space-x-2">
-                        <button 
-                            onClick={async () => {
-                                if (!window.confirm('Esto redondeará todas las cantidades existentes a unidades enteras. ¿Continuar?')) return;
-                                try {
-                                    const { data: items } = await supabase.from('inventory').select('*');
-                                    let c = 0;
-                                    if (items) {
-                                      for (const item of items) {
-                                        const unit = item.unit.toLowerCase();
-                                        let oldQ = item.quantity;
-                                        let newQ = oldQ;
-                                        if (unit === 'docenas') {
-                                            newQ = Math.ceil(oldQ * 12) / 12;
-                                        } else if (unit === 'unidades') {
-                                            newQ = Math.ceil(oldQ);
-                                        }
-                                        if (newQ !== oldQ) {
-                                            await supabase.from('inventory').update({ quantity: newQ }).eq('id', item.id);
-                                            c++;
-                                        }
-                                      }
-                                    }
-                                    
-                                    const { data: logs } = await supabase.from('production_log').select('*, inventory(unit)');
-                                    if (logs) {
-                                        for (const log of logs) {
-                                            if (!log.inventory) continue;
-                                            const unit = log.inventory.unit?.toLowerCase();
-                                            let q = log.quantity; let r = log.cantidad_restante;
-                                            let nq = q; let nr = r;
-                                            if (unit === 'docenas') {
-                                                if (q != null) nq = Math.ceil(q * 12) / 12;
-                                                if (r != null) nr = Math.ceil(r * 12) / 12;
-                                            } else if (unit === 'unidades') {
-                                                if (q != null) nq = Math.ceil(q);
-                                                if (r != null) nr = Math.ceil(r);
-                                            }
-                                            if (nq !== q || nr !== r) {
-                                                await supabase.from('production_log').update({ quantity: nq, cantidad_restante: nr }).eq('id', log.id);
-                                                c++;
-                                            }
-                                        }
-                                    }
-                                    alert(`Completado. Se actualizaron ${c} registros. Recargando...`);
-                                    window.location.reload();
-                                } catch(e: any) { alert(e.message); }
-                            }}
-                            className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition flex-shrink-0"
-                            title="Herramienta para redondear las cantidades fraccionarias existentes al entero superior en base a unidades."
-                        >
-                            Corregir Decimales
-                        </button>
+                    <div className="flex space-x-2">
                         <button onClick={() => setShowStockMovementForm(true)} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition flex-shrink-0">
                             Registrar Movimiento
                         </button>
