@@ -122,16 +122,26 @@ import EditIcon from '../icons/EditIcon';
                 
                 const newRestante = producedQuantity - processed;
                 
-                const editPayload = {
+                const editPayload: any = {
                     worker_id: workerId ? parseInt(workerId) : null,
                     inventory_id: producedInventoryId,
                     cantidad_total: producedQuantity,
                     cantidad_restante: newRestante,
-                    quantity: newRestante,
                     production_date: productionDate,
                     motivo: motivo,
                 };
+                if (newRestante > 0) {
+                    editPayload.quantity = newRestante;
+                }
                 
+                // Aseguramos que si la cantidad restante es 0 pase a Archivado
+                if (newRestante <= 0 && initialData.status !== 'Archivado') {
+                    editPayload.status = 'Archivado';
+                } else if (newRestante > 0 && initialData.status === 'Archivado') {
+                    // Si revertimos a mayor a 0, asume el estado de empaquetado (el log de empaquetar lo enviara a guardar despues si corresponde)
+                    editPayload.status = 'Para empaquetar'; 
+                }
+
                 const { error } = await supabase.from('production_log').update(editPayload).eq('id', initialData.id);
                 logError = error;
             } else {
