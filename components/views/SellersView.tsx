@@ -210,196 +210,162 @@ const MovementHistoryTable: React.FC<{
 const MovementForm: React.FC<{
     type: 'Carga' | 'Venta' | 'Devolución';
     seller: Seller;
-    inventoryItems: InventoryItem[]; // Central inventory items
-    sellerInventory: (SellerInventory & { inventory_item?: InventoryItem })[]; // Items seller has
-    onSubmit: (data: any) => Promise<void>;
+    inventoryItems: InventoryItem[];
+    sellerInventory: (SellerInventory & { inventory_item?: InventoryItem })[];
+    onSubmit: (data: { items: { inventory_id: number; quantity: number }[]; notes: string; date: string }) => Promise<void>;
     onCancel: () => void;
 }> = ({ type, seller, inventoryItems, sellerInventory, onSubmit, onCancel }) => {
-    const [itemId, setItemId] = useState<string>('');
-    const [quantityUnits, setQuantityUnits] = useState<string>('');
-    const [quantityDozens, setQuantityDozens] = useState<string>('');
+    const [quantities, setQuantities] = useState<Record<number, string>>({});
     const [notes, setNotes] = useState<string>('');
     const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
 
-    // Determine which list of items to show based on movement type
-    // Carga: Show all central inventory items
-    // Venta/Devolución: Show only items the seller has in stock (or all, but validation is needed)
-    // Actually, for Venta/Devolución, it's better to select from what they have.
-    
     const availableItems = useMemo(() => {
         if (type === 'Carga') {
             return inventoryItems;
         } else {
-            // For Sale/Return, map seller inventory back to InventoryItem structure for the select
             return sellerInventory
                 .filter(si => si.inventory_item)
                 .map(si => ({
                     ...si.inventory_item!,
-                    // Override quantity with seller's quantity for display purposes in the dropdown
                     quantity: si.quantity 
                 }));
         }
     }, [type, inventoryItems, sellerInventory]);
 
-    const selectedItem = useMemo(() => availableItems.find(i => i.id === Number(itemId)), [availableItems, itemId]);
+    const filteredItems = useMemo(() => {
+        if (!searchTerm) return availableItems;
+        return availableItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [availableItems, searchTerm]);
 
-    useEffect(() => {
-        setQuantityUnits('');
-        setQuantityDozens('');
-    }, [selectedItem]);
-
-    const handleUnitsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value.replace(',', '.');
+    const handleQuantityChange = (id: number, val: string, unit: string) => {
+        val = val.replace(',', '.');
         if (val === '' || /^\d*\.?\d*$/.test(val)) {
-            setQuantityUnits(val);
-            if (val === '') {
-                setQuantityDozens('');
-            } else {
-                const num = parseFloat(val);
-                if (!isNaN(num)) {
-                    const doz = num / 12;
-                    setQuantityDozens(doz.toFixed(2));
-                }
-            }
-        }
-    };
-
-    const handleDozensChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value.replace(',', '.');
-        if (val === '' || /^\d*\.?\d*$/.test(val)) {
-            setQuantityDozens(val);
-            if (val === '') {
-                setQuantityUnits('');
-            } else {
-                const num = parseFloat(val);
-                if (!isNaN(num)) {
-                    const units = num * 12;
-                    setQuantityUnits(Math.ceil(units).toString());
-                }
-            }
+            setQuantities(prev => ({ ...prev, [id]: val }));
         }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        let qty = 0;
-        if (selectedItem) {
-            const unit = selectedItem.unit.toLowerCase();
-            if (unit === 'docenas') {
-                qty = parseFloat(quantityUnits || '0') / 12;
-            } else {
-                qty = parseFloat(quantityUnits || '0');
-            }
-        }
+        const itemsToSubmit = Object.entries(quantities)
+            .map(([id, qtyStr]) => {
+                const item = availableItems.find(i => i.id === Number(id));
+                let parsedQty = parseFloat(qtyStr || '0');
+                if (item?.unit.toLowerCase() === 'docenas') {
+                    // For display we just take units and convert them to dozens. Wait, it's better to let them type what the selected unit is.
+                    // If the unit is docenas, they type docenas. So we just submit parsedQty.
+                }
+                return { inventory_id: Number(id), quantity: parsedQty };
+            })
+            .filter(item => item.quantity > 0);
 
-        if (!itemId || isNaN(qty) || qty <= 0 || !date) {
-            alert('Por favor, seleccione un artículo, ingrese una cantidad válida y una fecha.');
+        if (itemsToSubmit.length === 0 || !date) {
+            alert('Por favor, ingrese al menos una cantidad válida y una fecha.');
             return;
         }
 
         setIsSubmitting(true);
-        await onSubmit({ inventory_id: parseInt(itemId), quantity: qty, notes, date });
+        await onSubmit({ items: itemsToSubmit, notes, date });
         setIsSubmitting(false);
     };
-
-    const itemOptions = useMemo(() => availableItems.map(i => ({
-        id: i.id,
-        label: i.name,
-        subLabel: `${i.brand} - Stock: ${i.quantity} ${i.unit}`
-    })), [availableItems]);
-
-    const isStandardUnit = !selectedItem || ['unidades', 'docenas'].includes(selectedItem.unit.toLowerCase());
 
     return (
         <Card title={`Registrar ${type} - ${seller.name}`} className="mb-6 border-2 border-blue-100">
             <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
-                    <input 
-                        type="date" 
-                        value={date} 
-                        onChange={e => setDate(e.target.value)} 
-                        required 
-                        className="block w-full p-2 border border-gray-300 rounded-md"
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                        <input 
+                            type="date" 
+                            value={date} 
+                            onChange={e => setDate(e.target.value)} 
+                            required 
+                            className="block w-full p-2 border border-gray-300 rounded-md"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notas (Opcional)</label>
+                        <input 
+                            type="text" 
+                            value={notes} 
+                            onChange={e => setNotes(e.target.value)} 
+                            className="block w-full p-2 border border-gray-300 rounded-md"
+                            placeholder="Detalles adicionales..."
+                        />
+                    </div>
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
-                    <SearchableSelect 
-                        options={itemOptions}
-                        value={itemId}
-                        onChange={setItemId}
-                        placeholder="Buscar producto..."
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                    {isStandardUnit ? (
-                        <div className="flex space-x-2">
-                            <div className="flex-1">
-                                <label className="block text-xs text-gray-500 mb-1">Unidades</label>
-                                <div className="relative rounded-md shadow-sm">
-                                    <input 
-                                        type="text" 
-                                        inputMode="decimal" 
-                                        value={quantityUnits} 
-                                        onChange={handleUnitsChange} 
-                                        placeholder="0" 
-                                        className="block w-full border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex-1">
-                                <label className="block text-xs text-gray-500 mb-1">Docenas</label>
-                                <div className="relative rounded-md shadow-sm">
-                                    <input 
-                                        type="text" 
-                                        inputMode="decimal" 
-                                        value={quantityDozens} 
-                                        onChange={handleDozensChange} 
-                                        placeholder="0" 
-                                        className="block w-full border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="relative rounded-md shadow-sm">
-                            <input 
-                                type="text" 
-                                inputMode="decimal" 
-                                value={quantityUnits} 
-                                onChange={handleUnitsChange} 
-                                required 
-                                placeholder="0" 
-                                className="block w-full pr-16 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
-                            />
-                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                <span className="text-gray-500 sm:text-sm">{selectedItem?.unit || 'Unidad'}</span>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Notas (Opcional)</label>
+                    <div className="flex justify-between items-center mb-1">
+                        <label className="block text-sm font-medium text-gray-700">Buscar Producto</label>
+                        <button 
+                            type="button" 
+                            onClick={() => {
+                                const newQuantities = { ...quantities };
+                                filteredItems.forEach(item => {
+                                    newQuantities[item.id] = String(item.quantity);
+                                });
+                                setQuantities(newQuantities);
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                            Seleccionar todo el stock
+                        </button>
+                    </div>
                     <input 
                         type="text" 
-                        value={notes} 
-                        onChange={e => setNotes(e.target.value)} 
-                        className="block w-full p-2 border border-gray-300 rounded-md"
-                        placeholder="Detalles adicionales..."
+                        value={searchTerm} 
+                        onChange={e => setSearchTerm(e.target.value)} 
+                        className="block w-full p-2 border border-gray-300 rounded-md mb-2"
+                        placeholder="Escriba para filtrar..."
                     />
+                    
+                    <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-md">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 sticky top-0 z-10">
+                                <tr>
+                                    <th className="p-2">Producto</th>
+                                    <th className="p-2 text-right w-36">Cantidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredItems.map(item => (
+                                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                                        <td className="p-2">
+                                            <div className="font-medium text-gray-800">{item.name}</div>
+                                            <div className="text-xs text-gray-500">Stock: {item.quantity} {item.unit} | {item.brand}</div>
+                                        </td>
+                                        <td className="p-2 text-right">
+                                            <div className="relative">
+                                                <input 
+                                                    type="text" 
+                                                    inputMode="decimal"
+                                                    value={quantities[item.id] || ''}
+                                                    onChange={e => handleQuantityChange(item.id, e.target.value, item.unit)}
+                                                    placeholder="0"
+                                                    className="w-full p-1 border border-gray-300 rounded-md focus:ring-blue-500 pr-14 text-right"
+                                                />
+                                                <div className="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
+                                                    <span className="text-gray-400 text-xs">{item.unit === 'docenas' ? 'doc' : 'unid'}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredItems.length === 0 && (
+                                    <tr><td colSpan={2} className="p-4 text-center text-gray-500">No hay productos que coincidan.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-2">
                     <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition">Cancelar</button>
                     <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300">
-                        {isSubmitting ? 'Procesando...' : 'Confirmar'}
+                        {isSubmitting ? 'Procesando...' : 'Confirmar Todo'}
                     </button>
                 </div>
             </form>
@@ -509,116 +475,70 @@ const SellersView: React.FC = () => {
         }
     };
 
-    const handleMovement = async (data: { inventory_id: number; quantity: number; notes: string; date: string }) => {
-        if (!selectedSeller || !activeAction) return;
+    const handleMovement = async (data: { items: { inventory_id: number; quantity: number }[]; notes: string; date: string }) => {
+        if (!selectedSeller || !activeAction || data.items.length === 0) return;
 
-        const { inventory_id, quantity, notes, date } = data;
+        const { items, notes, date } = data;
         const sellerId = selectedSeller.id;
 
         try {
             // 1. Validate Stock
-            if (activeAction === 'Carga') {
-                // Check central inventory
-                const item = centralInventory.find(i => i.id === inventory_id);
-                if (!item || item.quantity < quantity) {
-                    alert('No hay suficiente stock en el inventario central.');
-                    return;
-                }
-            } else {
-                // Check seller inventory for Sale/Return
-                const item = sellerInventory.find(i => i.inventory_id === inventory_id);
-                if (!item || item.quantity < quantity) {
-                    alert('El vendedor no tiene suficiente stock para esta operación.');
-                    return;
-                }
-            }
-
-            // 2. Perform Updates based on Action Type
-            
-            if (activeAction === 'Carga') {
-                // A. Decrease Central Inventory
-                const { error: invError } = await supabase.rpc('decrement_inventory', { 
-                    row_id: inventory_id, 
-                    amount: quantity 
-                });
-                // Fallback if RPC doesn't exist (using direct update for now as RPC might not be set up)
-                // Actually, let's do direct update to be safe with current setup
-                const currentCentral = centralInventory.find(i => i.id === inventory_id)!;
-                const { error: updateCentralError } = await supabase
-                    .from('inventory')
-                    .update({ quantity: currentCentral.quantity - quantity })
-                    .eq('id', inventory_id);
-                
-                if (updateCentralError) throw updateCentralError;
-
-                // Log Central Movement
-                await supabase.from('inventory_movements').insert({
-                    inventory_id,
-                    quantity_change: -quantity,
-                    type: 'Salida',
-                    reason: `Carga a Vendedor: ${selectedSeller.name}`
-                });
-
-                // B. Increase Seller Inventory
-                // Check if exists
-                const existingSellerItem = sellerInventory.find(i => i.inventory_id === inventory_id);
-                if (existingSellerItem) {
-                    await supabase
-                        .from('seller_inventory')
-                        .update({ quantity: existingSellerItem.quantity + quantity, last_updated: new Date() })
-                        .eq('id', existingSellerItem.id);
+            for (const movementItem of items) {
+                if (activeAction === 'Carga') {
+                    const item = centralInventory.find(i => i.id === movementItem.inventory_id);
+                    if (!item || item.quantity < movementItem.quantity) {
+                        alert(`No hay suficiente stock en el inventario central para ${item?.name || 'un artículo'}.`);
+                        return;
+                    }
                 } else {
-                    await supabase
-                        .from('seller_inventory')
-                        .insert({ seller_id: sellerId, inventory_id, quantity });
+                    const item = sellerInventory.find(i => i.inventory_id === movementItem.inventory_id);
+                    if (!item || item.quantity < movementItem.quantity) {
+                        alert(`El vendedor no tiene suficiente stock para ${item?.inventory_item?.name || 'un artículo'}.`);
+                        return;
+                    }
+                }
+            }
+
+            // 2. Perform Updates
+            for (const movementItem of items) {
+                const { inventory_id, quantity } = movementItem;
+                
+                if (activeAction === 'Carga') {
+                    const currentCentral = centralInventory.find(i => i.id === inventory_id)!;
+                    await supabase.from('inventory').update({ quantity: currentCentral.quantity - quantity }).eq('id', inventory_id);
+                    await supabase.from('inventory_movements').insert({
+                        inventory_id, quantity_change: -quantity, type: 'Salida', reason: `Carga a Vendedor: ${selectedSeller.name}`
+                    });
+
+                    const existingSellerItem = sellerInventory.find(i => i.inventory_id === inventory_id);
+                    if (existingSellerItem) {
+                        await supabase.from('seller_inventory').update({ quantity: existingSellerItem.quantity + quantity, last_updated: new Date() }).eq('id', existingSellerItem.id);
+                    } else {
+                        await supabase.from('seller_inventory').insert({ seller_id: sellerId, inventory_id, quantity });
+                    }
+                } else if (activeAction === 'Venta') {
+                    const item = sellerInventory.find(i => i.inventory_id === inventory_id)!;
+                    await supabase.from('seller_inventory').update({ quantity: item.quantity - quantity, last_updated: new Date() }).eq('id', item.id);
+                } else if (activeAction === 'Devolución') {
+                    const item = sellerInventory.find(i => i.inventory_id === inventory_id)!;
+                    await supabase.from('seller_inventory').update({ quantity: item.quantity - quantity, last_updated: new Date() }).eq('id', item.id);
+
+                    const currentCentral = centralInventory.find(i => i.id === inventory_id)!;
+                    await supabase.from('inventory').update({ quantity: currentCentral.quantity + quantity }).eq('id', inventory_id);
+                    await supabase.from('inventory_movements').insert({
+                        inventory_id, quantity_change: quantity, type: 'Entrada', reason: `Devolución de Vendedor: ${selectedSeller.name}`
+                    });
                 }
 
-            } else if (activeAction === 'Venta') {
-                // Decrease Seller Inventory
-                const item = sellerInventory.find(i => i.inventory_id === inventory_id)!;
-                await supabase
-                    .from('seller_inventory')
-                    .update({ quantity: item.quantity - quantity, last_updated: new Date() })
-                    .eq('id', item.id);
-
-            } else if (activeAction === 'Devolución') {
-                // A. Decrease Seller Inventory
-                const item = sellerInventory.find(i => i.inventory_id === inventory_id)!;
-                await supabase
-                    .from('seller_inventory')
-                    .update({ quantity: item.quantity - quantity, last_updated: new Date() })
-                    .eq('id', item.id);
-
-                // B. Increase Central Inventory
-                const currentCentral = centralInventory.find(i => i.id === inventory_id)!;
-                await supabase
-                    .from('inventory')
-                    .update({ quantity: currentCentral.quantity + quantity })
-                    .eq('id', inventory_id);
-
-                // Log Central Movement
-                await supabase.from('inventory_movements').insert({
-                    inventory_id,
-                    quantity_change: quantity,
-                    type: 'Entrada',
-                    reason: `Devolución de Vendedor: ${selectedSeller.name}`
+                await supabase.from('seller_movements').insert({
+                    seller_id: sellerId, inventory_id, type: activeAction, quantity, date, notes
                 });
             }
 
-            // 3. Log Seller Movement
-            await supabase.from('seller_movements').insert({
-                seller_id: sellerId,
-                inventory_id,
-                type: activeAction,
-                quantity,
-                date,
-                notes
-            });
-
-            alert('Operación registrada con éxito.');
+            alert('Operaciones registradas con éxito.');
             setActiveAction(null);
             fetchSellerInventory(sellerId);
-            fetchCentralInventory(); // Refresh central inventory to keep sync
+            fetchCentralInventory();
             fetchSellerMovements(sellerId);
 
         } catch (error: any) {

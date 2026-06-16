@@ -738,6 +738,62 @@ const InventoryView: React.FC = () => {
     }, [items, brandFilter, searchTerm, showOnlyLowStock]);
 
 
+    const handleExportCSV = () => {
+        // Enforce UTF-8 via BOM for Excel
+        const BOM = '\uFEFF';
+        let csvContent = BOM + "Nombre,Tipo,Marca,Cantidad Actual,Unidad Base,En Docenas,Alerta Stock Bajo,Estado\n";
+
+        filteredItems.forEach(item => {
+            const isLowStock = item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold;
+            const estado = isLowStock ? 'Bajo Stock' : 'OK';
+            
+            const unitLower = item.unit.toLowerCase();
+            let displayQuantity = item.quantity;
+            let displayUnit = item.unit;
+            let quantityInDozens = '-';
+
+            if (unitLower === 'unidades') {
+                displayQuantity = Math.ceil(item.quantity);
+                quantityInDozens = (displayQuantity / 12).toFixed(2);
+            } else if (unitLower === 'docenas') {
+                displayQuantity = Math.ceil(item.quantity * 12);
+                displayUnit = 'unidades'; 
+                quantityInDozens = (displayQuantity / 12).toFixed(2);
+            }
+
+            // Escape fields with commas or quotes
+            const escapeCsv = (field: any) => {
+                const str = String(field);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return `"${str.replace(/"/g, '""')}"`;
+                }
+                return str;
+            };
+
+            const row = [
+                escapeCsv(item.name),
+                escapeCsv(item.type),
+                escapeCsv(item.brand),
+                escapeCsv(displayQuantity),
+                escapeCsv(displayUnit),
+                escapeCsv(quantityInDozens),
+                escapeCsv(item.low_stock_threshold),
+                escapeCsv(estado)
+            ];
+
+            csvContent += row.join(",") + "\n";
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'inventario.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const rawMaterials = filteredItems.filter(i => i.type === 'Materia Prima');
     const finishedProducts = filteredItems.filter(i => i.type === 'Producto Terminado');
 
@@ -832,6 +888,15 @@ const InventoryView: React.FC = () => {
                                     className={`px-3 py-2 rounded-lg text-sm font-semibold transition shadow-sm border whitespace-nowrap flex items-center gap-1 flex-shrink-0 ${showOnlyLowStock ? 'bg-red-600 text-white border-red-700 hover:bg-red-700' : 'bg-white text-gray-700 hover:bg-red-50 border-gray-300'}`}
                                 >
                                     ⚠️ Stock Bajo
+                                </button>
+                                <div className="w-px h-6 bg-gray-300 mx-1 flex-shrink-0"></div>
+                                <button
+                                    onClick={handleExportCSV}
+                                    className="px-3 py-2 rounded-lg text-sm font-semibold transition shadow-sm border bg-white border-gray-300 text-green-700 hover:bg-green-50 whitespace-nowrap flex items-center gap-1 flex-shrink-0"
+                                    title="Exportar archivo CSV para Excel"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                    Exportar CSV
                                 </button>
                             </div>
                             <div className="relative w-full md:w-64">
