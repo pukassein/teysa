@@ -711,7 +711,17 @@ const InventoryView: React.FC = () => {
             const { error } = await supabase.from('inventory').delete().eq('id', id);
             if (error) {
                 console.error('Error deleting item:', error.message);
-                alert(`Error al eliminar artículo: ${error.message}`);
+                if (error.message.includes('foreign key constraint')) {
+                    if (error.message.includes('product_recipes')) {
+                        alert('No se puede eliminar este artículo porque forma parte de una receta de producto. Primero debes removerlo de la receta en "Órdenes de Producción".');
+                    } else if (error.message.includes('seller_inventory') || error.message.includes('inventory_movements') || error.message.includes('production_log') || error.message.includes('activity_logs')) {
+                        alert('No se puede eliminar este artículo porque tiene un historial activo (movimientos, registro de producción o registro en vendedores). Por precaución, este artículo debe mantenerse. Puedes ajustar su stock a 0 en su lugar.');
+                    } else {
+                        alert('No se puede eliminar el artículo porque está vinculado a otros registros del sistema.');
+                    }
+                } else {
+                    alert(`Error al eliminar artículo: ${error.message}`);
+                }
             } else {
                 setItems(currentItems => currentItems.filter(item => item.id !== id));
             }
@@ -738,12 +748,16 @@ const InventoryView: React.FC = () => {
     }, [items, brandFilter, searchTerm, showOnlyLowStock]);
 
 
-    const handleExportCSV = () => {
+    const handleExportCSV = (exportType: 'all' | 'products') => {
         // Enforce UTF-8 via BOM for Excel
         const BOM = '\uFEFF';
         let csvContent = BOM + "Nombre,Tipo,Marca,Cantidad Actual,Unidad Base,En Docenas,Alerta Stock Bajo,Estado\n";
 
-        filteredItems.forEach(item => {
+        const rawMaterials = filteredItems.filter(i => i.type === 'Materia Prima');
+        const finishedProducts = filteredItems.filter(i => i.type === 'Producto Terminado');
+        const itemsToExport = exportType === 'products' ? finishedProducts : filteredItems;
+
+        itemsToExport.forEach(item => {
             const isLowStock = item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold;
             const estado = isLowStock ? 'Bajo Stock' : 'OK';
             
@@ -843,11 +857,31 @@ const InventoryView: React.FC = () => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">Control de Inventario</h2>
                 {!isFormOpen && (
-                    <div className="flex space-x-2">
-                        <button onClick={() => setShowStockMovementForm(true)} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition flex-shrink-0">
+                    <div className="flex flex-wrap gap-2 items-center justify-end">
+                        <div className="hidden sm:flex items-center space-x-1 mr-2 bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
+                             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2">Exportar</span>
+                             <div className="w-px h-4 bg-gray-200"></div>
+                             <button
+                                 onClick={() => handleExportCSV('products')}
+                                 className="px-3 py-1.5 rounded text-sm font-medium transition hover:bg-green-50 text-gray-700 hover:text-green-700 flex items-center gap-1.5"
+                                 title="Exportar archivo CSV para Excel (Solo Productos Terminados)"
+                             >
+                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                 Solo Productos
+                             </button>
+                             <button
+                                 onClick={() => handleExportCSV('all')}
+                                 className="px-3 py-1.5 rounded text-sm font-medium transition hover:bg-green-50 text-gray-700 hover:text-green-700 flex items-center gap-1.5"
+                                 title="Exportar archivo CSV para Excel (Todos los artículos)"
+                             >
+                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                 Todo
+                             </button>
+                        </div>
+                        <button onClick={() => setShowStockMovementForm(true)} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition flex-shrink-0 whitespace-nowrap">
                             Registrar Movimiento
                         </button>
-                        <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition flex-shrink-0">
+                        <button onClick={() => setShowAddForm(true)} className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition flex-shrink-0 whitespace-nowrap">
                             Añadir Artículo
                         </button>
                     </div>
@@ -888,15 +922,6 @@ const InventoryView: React.FC = () => {
                                     className={`px-3 py-2 rounded-lg text-sm font-semibold transition shadow-sm border whitespace-nowrap flex items-center gap-1 flex-shrink-0 ${showOnlyLowStock ? 'bg-red-600 text-white border-red-700 hover:bg-red-700' : 'bg-white text-gray-700 hover:bg-red-50 border-gray-300'}`}
                                 >
                                     ⚠️ Stock Bajo
-                                </button>
-                                <div className="w-px h-6 bg-gray-300 mx-1 flex-shrink-0"></div>
-                                <button
-                                    onClick={handleExportCSV}
-                                    className="px-3 py-2 rounded-lg text-sm font-semibold transition shadow-sm border bg-white border-gray-300 text-green-700 hover:bg-green-50 whitespace-nowrap flex items-center gap-1 flex-shrink-0"
-                                    title="Exportar archivo CSV para Excel"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                    Exportar CSV
                                 </button>
                             </div>
                             <div className="relative w-full md:w-64">

@@ -150,8 +150,15 @@ const MovementHistoryTable: React.FC<{
                             // Ensure we have a valid date string before parsing
                             let dateObj: Date;
                             if (mov.date) {
-                                // If it's just a date string like '2023-10-27', append time to avoid timezone issues
-                                dateObj = new Date(mov.date.includes('T') ? mov.date : mov.date + 'T00:00:00');
+                                // If it's a legacy date saved exactly at midnight UTC, it was likely a local date entry without time.
+                                // We swap it to mid-day Asuncion time to ensure it shows the correct calendar day.
+                                if (mov.date.includes('T00:00:00+00:00') || mov.date.includes('T00:00:00.000Z') || mov.date.includes('T00:00:00Z')) {
+                                    dateObj = new Date(mov.date.replace(/T00:00:00(\.000Z|Z|\+00:00)/, 'T12:00:00-04:00'));
+                                } else if (!mov.date.includes('T')) {
+                                    dateObj = new Date(mov.date + 'T12:00:00-04:00');
+                                } else {
+                                    dateObj = new Date(mov.date);
+                                }
                             } else if (mov.created_at) {
                                 dateObj = new Date(mov.created_at);
                             } else {
@@ -168,7 +175,7 @@ const MovementHistoryTable: React.FC<{
                                 <tr key={mov.id}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                         <div className="flex flex-col">
-                                            <span>{dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}</span>
+                                            <span>{dateObj.toLocaleString('es-ES', { timeZone: 'America/Asuncion', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                             <span className="text-xs text-gray-400">Semana {weekNum}</span>
                                         </div>
                                     </td>
@@ -215,9 +222,15 @@ const MovementForm: React.FC<{
     onSubmit: (data: { items: { inventory_id: number; quantity: number }[]; notes: string; date: string }) => Promise<void>;
     onCancel: () => void;
 }> = ({ type, seller, inventoryItems, sellerInventory, onSubmit, onCancel }) => {
+    const getLocalDatetimeStr = () => {
+        const d = new Date();
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
     const [quantities, setQuantities] = useState<Record<number, string>>({});
     const [notes, setNotes] = useState<string>('');
-    const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState<string>(getLocalDatetimeStr());
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -267,7 +280,14 @@ const MovementForm: React.FC<{
         }
 
         setIsSubmitting(true);
-        await onSubmit({ items: itemsToSubmit, notes, date });
+        // Convert the local datetime-local string to an ISO string with UTC offset for Supabase
+        let isoDate = new Date().toISOString();
+        try {
+            isoDate = new Date(date).toISOString();
+        } catch(e) {
+            // fallback if date parsing fails
+        }
+        await onSubmit({ items: itemsToSubmit, notes, date: isoDate });
         setIsSubmitting(false);
     };
 
@@ -276,9 +296,9 @@ const MovementForm: React.FC<{
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Fecha y Hora</label>
                         <input 
-                            type="date" 
+                            type="datetime-local" 
                             value={date} 
                             onChange={e => setDate(e.target.value)} 
                             required 
@@ -383,9 +403,6 @@ const SellersView: React.FC = () => {
     const [centralInventory, setCentralInventory] = useState<InventoryItem[]>([]);
     const [activeAction, setActiveAction] = useState<'Carga' | 'Venta' | 'Devolución' | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [showWhatsNew, setShowWhatsNew] = useState(() => {
-        return sessionStorage.getItem('vendedores_whats_new_dismissed') !== 'true';
-    });
 
     useEffect(() => {
         fetchSellers();
@@ -701,44 +718,6 @@ const SellersView: React.FC = () => {
                     </div>
                 )}
             </div>
-
-            {/* What's New Pop-up */}
-            {showWhatsNew && (
-                <div className="fixed bottom-6 right-6 w-80 bg-white rounded-xl shadow-2xl border border-blue-100 overflow-hidden z-50 transition-all duration-500 ease-in-out transform translate-y-0 opacity-100">
-                    <div className="bg-blue-600 px-4 py-3 flex justify-between items-center">
-                        <h3 className="text-white font-semibold text-sm">Novedades en Vendedores</h3>
-                        <button 
-                            onClick={() => {
-                                setShowWhatsNew(false);
-                                sessionStorage.setItem('vendedores_whats_new_dismissed', 'true');
-                            }}
-                            className="text-blue-100 hover:text-white transition"
-                        >
-                            <XIcon size={18} />
-                        </button>
-                    </div>
-                    <div className="p-4 bg-blue-50/50">
-                        <ul className="space-y-3 text-sm text-gray-700">
-                            <li className="flex items-start">
-                                <span className="text-blue-500 mr-2">•</span>
-                                <span><strong>Fechas y Semanas:</strong> Ahora puedes ver y registrar la fecha exacta y la semana de cada movimiento.</span>
-                            </li>
-                            <li className="flex items-start">
-                                <span className="text-blue-500 mr-2">•</span>
-                                <span><strong>Deshacer Movimientos:</strong> ¿Te equivocaste? Usa el botón deshacer en el historial.</span>
-                            </li>
-                            <li className="flex items-start">
-                                <span className="text-blue-500 mr-2">•</span>
-                                <span><strong>Stock Claro:</strong> Visualiza el stock en unidades y docenas simultáneamente.</span>
-                            </li>
-                            <li className="flex items-start">
-                                <span className="text-blue-500 mr-2">•</span>
-                                <span><strong>Filtro Inteligente:</strong> La materia prima ya no satura esta vista.</span>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
