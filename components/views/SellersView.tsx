@@ -72,7 +72,7 @@ const SellerInventoryTable: React.FC<{
             <tbody className="bg-white divide-y divide-gray-200">
                 {inventory.length === 0 ? (
                     <tr>
-                        <td colSpan={4} className="px-6 py-4 text-center text-gray-500">El camión está vacío.</td>
+                        <td colSpan={4} className="px-6 py-4 text-center text-gray-500">Inventario vacío.</td>
                     </tr>
                 ) : (
                     inventory.map(item => {
@@ -229,6 +229,8 @@ const MovementForm: React.FC<{
     };
 
     const [quantities, setQuantities] = useState<Record<number, string>>({});
+    const [units, setUnits] = useState<Record<number, string>>({});
+    const [selectedAll, setSelectedAll] = useState<Record<number, boolean>>({});
     const [notes, setNotes] = useState<string>('');
     const [date, setDate] = useState<string>(getLocalDatetimeStr());
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -236,10 +238,10 @@ const MovementForm: React.FC<{
 
     const availableItems = useMemo(() => {
         if (type === 'Carga') {
-            return inventoryItems;
+            return inventoryItems.filter(i => i.quantity > 0);
         } else {
             return sellerInventory
-                .filter(si => si.inventory_item)
+                .filter(si => si.inventory_item && si.quantity > 0)
                 .map(si => ({
                     ...si.inventory_item!,
                     quantity: si.quantity 
@@ -265,11 +267,21 @@ const MovementForm: React.FC<{
         const itemsToSubmit = Object.entries(quantities)
             .map(([id, qtyStr]) => {
                 const item = availableItems.find(i => i.id === Number(id));
+                if (!item) return { inventory_id: Number(id), quantity: 0 };
+                
                 let parsedQty = parseFloat(qtyStr || '0');
-                if (item?.unit.toLowerCase() === 'docenas') {
-                    // For display we just take units and convert them to dozens. Wait, it's better to let them type what the selected unit is.
-                    // If the unit is docenas, they type docenas. So we just submit parsedQty.
+                const selectedUnit = units[Number(id)]?.toLowerCase() || item.unit.toLowerCase();
+                const baseUnit = item.unit.toLowerCase();
+                
+                if (selectedUnit === 'docenas' && baseUnit === 'unidades') {
+                    parsedQty = parsedQty * 12;
+                } else if (selectedUnit === 'unidades' && baseUnit === 'docenas') {
+                    parsedQty = parsedQty / 12;
                 }
+                
+                // Redondear decimales
+                parsedQty = Math.round(parsedQty * 100) / 100;
+
                 return { inventory_id: Number(id), quantity: parsedQty };
             })
             .filter(item => item.quantity > 0);
@@ -324,10 +336,16 @@ const MovementForm: React.FC<{
                             type="button" 
                             onClick={() => {
                                 const newQuantities = { ...quantities };
+                                const newUnits = { ...units };
+                                const newSelectedAll = { ...selectedAll };
                                 filteredItems.forEach(item => {
-                                    newQuantities[item.id] = String(item.quantity);
+                                    newQuantities[item.id] = String(Number(item.quantity).toFixed(2).replace(/\.00$/, ''));
+                                    newUnits[item.id] = item.unit;
+                                    newSelectedAll[item.id] = true;
                                 });
                                 setQuantities(newQuantities);
+                                setUnits(newUnits);
+                                setSelectedAll(newSelectedAll);
                             }}
                             className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                         >
@@ -351,31 +369,68 @@ const MovementForm: React.FC<{
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredItems.map(item => (
-                                    <tr key={item.id} className="border-b hover:bg-gray-50">
-                                        <td className="p-2">
-                                            <div className="font-medium text-gray-800">{item.name}</div>
-                                            <div className="text-xs text-gray-500">Stock: {item.quantity} {item.unit} | {item.brand}</div>
-                                        </td>
-                                        <td className="p-2 text-right">
-                                            <div className="relative">
-                                                <input 
-                                                    type="text" 
-                                                    inputMode="decimal"
-                                                    value={quantities[item.id] || ''}
-                                                    onChange={e => handleQuantityChange(item.id, e.target.value, item.unit)}
-                                                    placeholder="0"
-                                                    className="w-full p-1 border border-gray-300 rounded-md focus:ring-blue-500 pr-14 text-right"
-                                                />
-                                                <div className="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none">
-                                                    <span className="text-gray-400 text-xs">{item.unit === 'docenas' ? 'doc' : 'unid'}</span>
+                                {filteredItems.map(item => {
+                                    const itemUnit = item.unit.toLowerCase();
+                                    const canConvert = itemUnit === 'unidades' || itemUnit === 'docenas';
+                                    
+                                    return (
+                                        <tr key={item.id} className="border-b hover:bg-gray-50">
+                                            <td className="p-2">
+                                                <div className="font-medium text-gray-800">{item.name}</div>
+                                                <div className="text-xs text-gray-500">Stock: {Number(item.quantity).toFixed(2).replace(/\.00$/, '')} {item.unit} | {item.brand}</div>
+                                            </td>
+                                            <td className="p-2 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <div className="flex items-center gap-1" title="Seleccionar todo el stock">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={selectedAll[item.id] || false}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked;
+                                                                setSelectedAll(prev => ({ ...prev, [item.id]: checked }));
+                                                                if (checked) {
+                                                                    setUnits(prev => ({ ...prev, [item.id]: item.unit }));
+                                                                    setQuantities(prev => ({ ...prev, [item.id]: String(Number(item.quantity).toFixed(2).replace(/\.00$/, '')) }));
+                                                                } else {
+                                                                    setQuantities(prev => ({ ...prev, [item.id]: '' }));
+                                                                }
+                                                            }}
+                                                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                                                        />
+                                                    </div>
+                                                    <input 
+                                                        type="text" 
+                                                        inputMode="decimal"
+                                                        value={quantities[item.id] || ''}
+                                                        onChange={e => {
+                                                            handleQuantityChange(item.id, e.target.value, item.unit);
+                                                            setSelectedAll(prev => ({ ...prev, [item.id]: false }));
+                                                        }}
+                                                        placeholder="0"
+                                                        className="w-20 p-1 border border-gray-300 rounded-md focus:ring-blue-500 text-right"
+                                                    />
+                                                    {canConvert ? (
+                                                        <select
+                                                            value={units[item.id] || item.unit}
+                                                            onChange={e => {
+                                                                setUnits(prev => ({ ...prev, [item.id]: e.target.value }));
+                                                                setSelectedAll(prev => ({ ...prev, [item.id]: false }));
+                                                            }}
+                                                            className="p-1 border border-gray-300 rounded-md focus:ring-blue-500 text-xs text-gray-600 bg-gray-50"
+                                                        >
+                                                            <option value="unidades">unid</option>
+                                                            <option value="docenas">doc</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className="text-gray-400 text-xs w-12 text-left inline-block pl-1 truncate" title={item.unit}>{item.unit}</span>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                                 {filteredItems.length === 0 && (
-                                    <tr><td colSpan={2} className="p-4 text-center text-gray-500">No hay productos que coincidan.</td></tr>
+                                    <tr><td colSpan={2} className="p-4 text-center text-gray-500">Inventario vacío.</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -703,7 +758,7 @@ const SellersView: React.FC = () => {
                             {isLoading ? (
                                 <p className="text-center py-8 text-gray-500">Cargando inventario...</p>
                             ) : (
-                                <SellerInventoryTable inventory={sellerInventory} />
+                                <SellerInventoryTable inventory={sellerInventory.filter(item => item.quantity > 0)} />
                             )}
                         </Card>
 
