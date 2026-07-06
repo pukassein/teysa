@@ -237,16 +237,18 @@ const MovementForm: React.FC<{
     const [searchTerm, setSearchTerm] = useState('');
 
     const availableItems = useMemo(() => {
+        let items = [];
         if (type === 'Carga') {
-            return inventoryItems.filter(i => i.quantity > 0);
+            items = inventoryItems.filter(i => i.quantity > 0);
         } else {
-            return sellerInventory
+            items = sellerInventory
                 .filter(si => si.inventory_item && si.quantity > 0)
                 .map(si => ({
                     ...si.inventory_item!,
                     quantity: si.quantity 
                 }));
         }
+        return items.sort((a, b) => a.name.localeCompare(b.name));
     }, [type, inventoryItems, sellerInventory]);
 
     const filteredItems = useMemo(() => {
@@ -758,7 +760,14 @@ const SellersView: React.FC = () => {
                             {isLoading ? (
                                 <p className="text-center py-8 text-gray-500">Cargando inventario...</p>
                             ) : (
-                                <SellerInventoryTable inventory={sellerInventory.filter(item => item.quantity > 0)} />
+                                <SellerInventoryTable inventory={sellerInventory
+                                    .filter(item => item.quantity > 0)
+                                    .sort((a, b) => {
+                                        const nameA = a.inventory_item?.name || '';
+                                        const nameB = b.inventory_item?.name || '';
+                                        return nameA.localeCompare(nameB);
+                                    })
+                                } />
                             )}
                         </Card>
 
