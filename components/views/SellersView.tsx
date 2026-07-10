@@ -135,7 +135,8 @@ const MovementHistoryTable: React.FC<{
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad (Unidades)</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad (Docenas)</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notas</th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acción</th>
                     </tr>
@@ -143,7 +144,7 @@ const MovementHistoryTable: React.FC<{
                 <tbody className="bg-white divide-y divide-gray-200">
                     {movements.length === 0 ? (
                         <tr>
-                            <td colSpan={6} className="px-6 py-4 text-center text-gray-500">No hay movimientos registrados.</td>
+                            <td colSpan={7} className="px-6 py-4 text-center text-gray-500">No hay movimientos registrados.</td>
                         </tr>
                     ) : (
                         movements.map(mov => {
@@ -171,6 +172,19 @@ const MovementHistoryTable: React.FC<{
                             }
 
                             const weekNum = getWeekNumber(dateObj);
+                            
+                            const unitLower = mov.inventory_item?.unit?.toLowerCase() || '';
+                            let displayQuantity = Number(mov.quantity);
+                            let quantityInDozens: string | number = '-';
+
+                            if (unitLower === 'unidades') {
+                                displayQuantity = Math.ceil(Number(mov.quantity));
+                                quantityInDozens = (displayQuantity / 12).toFixed(2);
+                            } else if (unitLower === 'docenas') {
+                                displayQuantity = Math.ceil(Number(mov.quantity) * 12);
+                                quantityInDozens = (displayQuantity / 12).toFixed(2);
+                            }
+
                             return (
                                 <tr key={mov.id}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -190,7 +204,12 @@ const MovementHistoryTable: React.FC<{
                                         {mov.inventory_item?.name || 'Desconocido'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                                        {Number(mov.quantity).toFixed(2)} {mov.inventory_item?.unit || ''}
+                                        {unitLower === 'unidades' || unitLower === 'docenas' 
+                                            ? displayQuantity
+                                            : `${displayQuantity.toFixed(2)} ${mov.inventory_item?.unit || ''}`}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {quantityInDozens}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
                                         {mov.notes || '-'}
@@ -239,7 +258,10 @@ const MovementForm: React.FC<{
     const availableItems = useMemo(() => {
         let items = [];
         if (type === 'Carga') {
-            items = inventoryItems.filter(i => i.quantity > 0);
+            items = inventoryItems.filter(i => {
+                const brand = (i.brand || '').toLowerCase();
+                return i.quantity > 0 && (brand.includes('avanti') || brand.includes('duramaxi'));
+            });
         } else {
             items = sellerInventory
                 .filter(si => si.inventory_item && si.quantity > 0)
@@ -272,7 +294,11 @@ const MovementForm: React.FC<{
                 if (!item) return { inventory_id: Number(id), quantity: 0 };
                 
                 let parsedQty = parseFloat(qtyStr || '0');
-                const selectedUnit = units[Number(id)]?.toLowerCase() || item.unit.toLowerCase();
+                
+                const isConvertible = item.unit.toLowerCase() === 'unidades' || item.unit.toLowerCase() === 'docenas';
+                const defaultUnit = (type === 'Venta' && isConvertible) ? 'unidades' : item.unit.toLowerCase();
+                
+                const selectedUnit = units[Number(id)]?.toLowerCase() || defaultUnit;
                 const baseUnit = item.unit.toLowerCase();
                 
                 if (selectedUnit === 'docenas' && baseUnit === 'unidades') {
@@ -341,8 +367,18 @@ const MovementForm: React.FC<{
                                 const newUnits = { ...units };
                                 const newSelectedAll = { ...selectedAll };
                                 filteredItems.forEach(item => {
-                                    newQuantities[item.id] = String(Number(item.quantity).toFixed(2).replace(/\.00$/, ''));
-                                    newUnits[item.id] = item.unit;
+                                    const isConvertible = item.unit.toLowerCase() === 'unidades' || item.unit.toLowerCase() === 'docenas';
+                                    const targetUnit = (type === 'Venta' && isConvertible) ? 'unidades' : item.unit;
+                                    newUnits[item.id] = targetUnit;
+                                    
+                                    let qty = Number(item.quantity);
+                                    if (targetUnit === 'unidades' && item.unit.toLowerCase() === 'docenas') {
+                                        qty = qty * 12;
+                                    } else if (targetUnit === 'docenas' && item.unit.toLowerCase() === 'unidades') {
+                                        qty = qty / 12;
+                                    }
+                                    
+                                    newQuantities[item.id] = String(qty.toFixed(2).replace(/\.00$/, ''));
                                     newSelectedAll[item.id] = true;
                                 });
                                 setQuantities(newQuantities);
@@ -391,8 +427,17 @@ const MovementForm: React.FC<{
                                                                 const checked = e.target.checked;
                                                                 setSelectedAll(prev => ({ ...prev, [item.id]: checked }));
                                                                 if (checked) {
-                                                                    setUnits(prev => ({ ...prev, [item.id]: item.unit }));
-                                                                    setQuantities(prev => ({ ...prev, [item.id]: String(Number(item.quantity).toFixed(2).replace(/\.00$/, '')) }));
+                                                                    const targetUnit = (type === 'Venta' && canConvert) ? 'unidades' : item.unit;
+                                                                    setUnits(prev => ({ ...prev, [item.id]: targetUnit }));
+                                                                    
+                                                                    let qty = Number(item.quantity);
+                                                                    if (targetUnit === 'unidades' && item.unit.toLowerCase() === 'docenas') {
+                                                                        qty = qty * 12;
+                                                                    } else if (targetUnit === 'docenas' && item.unit.toLowerCase() === 'unidades') {
+                                                                        qty = qty / 12;
+                                                                    }
+                                                                    
+                                                                    setQuantities(prev => ({ ...prev, [item.id]: String(qty.toFixed(2).replace(/\.00$/, '')) }));
                                                                 } else {
                                                                     setQuantities(prev => ({ ...prev, [item.id]: '' }));
                                                                 }
@@ -413,7 +458,7 @@ const MovementForm: React.FC<{
                                                     />
                                                     {canConvert ? (
                                                         <select
-                                                            value={units[item.id] || item.unit}
+                                                            value={units[item.id] || (type === 'Venta' ? 'unidades' : item.unit)}
                                                             onChange={e => {
                                                                 setUnits(prev => ({ ...prev, [item.id]: e.target.value }));
                                                                 setSelectedAll(prev => ({ ...prev, [item.id]: false }));

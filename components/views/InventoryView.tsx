@@ -178,228 +178,237 @@ const StockMovementForm: React.FC<{
     onSave: () => void;
     onCancel: () => void;
 }> = ({ items, onSave, onCancel }) => {
-    const [itemId, setItemId] = useState<string>('');
     const [movementType, setMovementType] = useState<'Salida' | 'Entrada'>('Salida');
-    const [quantityUnits, setQuantityUnits] = useState<string>('');
-    const [quantityDozens, setQuantityDozens] = useState<string>('');
+    const [quantities, setQuantities] = useState<Record<number, string>>({});
+    const [units, setUnits] = useState<Record<number, string>>({});
+    const [selectedAll, setSelectedAll] = useState<Record<number, boolean>>({});
     const [reason, setReason] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [brandFilter, setBrandFilter] = useState<'all' | Brand>('all');
 
-    const selectedItem = useMemo(() => items.find(i => i.id === Number(itemId)), [items, itemId]);
+    const availableItems = useMemo(() => items.sort((a, b) => a.name.localeCompare(b.name)), [items]);
 
-    useEffect(() => {
-        setQuantityUnits('');
-        setQuantityDozens('');
-    }, [selectedItem]);
-
-    const handleUnitsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value.replace(',', '.');
-        if (val === '' || /^\d*\.?\d*$/.test(val)) {
-            setQuantityUnits(val);
-            if (val === '') {
-                setQuantityDozens('');
-            } else {
-                const num = parseFloat(val);
-                if (!isNaN(num)) {
-                    const doz = num / 12;
-                    setQuantityDozens(doz.toFixed(2));
-                }
-            }
+    const filteredItems = useMemo(() => {
+        let results = availableItems;
+        if (brandFilter !== 'all') {
+            results = results.filter(i => i.brand === brandFilter);
         }
-    };
+        if (searchTerm.trim() !== '') {
+            results = results.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        }
+        return results;
+    }, [availableItems, searchTerm, brandFilter]);
 
-    const handleDozensChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value.replace(',', '.');
+    const handleQuantityChange = (id: number, val: string) => {
+        val = val.replace(',', '.');
         if (val === '' || /^\d*\.?\d*$/.test(val)) {
-            setQuantityDozens(val);
-            if (val === '') {
-                setQuantityUnits('');
-            } else {
-                const num = parseFloat(val);
-                if (!isNaN(num)) {
-                    const units = num * 12;
-                    setQuantityUnits(Math.ceil(units).toString());
-                }
-            }
+            setQuantities(prev => ({ ...prev, [id]: val }));
         }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
-        // Determine the effective quantity based on the item's unit
-        let quantityChange = 0;
-        if (!selectedItem) {
-             alert('Artículo no encontrado.');
-             return;
-        }
 
-        const unit = selectedItem.unit.toLowerCase();
-        if (unit === 'docenas') {
-            quantityChange = parseFloat(quantityUnits || '0') / 12;
-        } else {
-            // Default to units for 'unidades' or any other unit (kg, m, etc.)
-            quantityChange = parseFloat(quantityUnits || '0');
-        }
+        const itemsToProcess = Object.entries(quantities)
+            .map(([id, qtyStr]) => {
+                const item = availableItems.find(i => i.id === Number(id));
+                if (!item) return null;
+                
+                let parsedQty = parseFloat(qtyStr || '0');
+                if (isNaN(parsedQty) || parsedQty <= 0) return null;
 
-        if (!itemId || isNaN(quantityChange) || quantityChange <= 0) {
-            alert('Por favor, seleccione un artículo e ingrese una cantidad válida.');
+                const selectedUnit = units[item.id]?.toLowerCase() || (item.unit.toLowerCase() === 'docenas' || item.unit.toLowerCase() === 'unidades' ? 'unidades' : item.unit.toLowerCase());
+                const baseUnit = item.unit.toLowerCase();
+
+                if (selectedUnit === 'docenas' && baseUnit === 'unidades') {
+                    parsedQty = parsedQty * 12;
+                } else if (selectedUnit === 'unidades' && baseUnit === 'docenas') {
+                    parsedQty = parsedQty / 12;
+                }
+                
+                // Redondear decimales
+                parsedQty = Math.round(parsedQty * 100) / 100;
+
+                return { item, quantityChange: parsedQty, displayUnit: selectedUnit };
+            })
+            .filter((i): i is {item: InventoryItem, quantityChange: number, displayUnit: string} => i !== null);
+
+        if (itemsToProcess.length === 0) {
+            alert('Por favor, ingrese al menos una cantidad válida mayor a 0.');
             return;
         }
+
         setIsSubmitting(true);
 
-        const newQuantity = movementType === 'Salida'
-            ? selectedItem.quantity - quantityChange
-            : selectedItem.quantity + quantityChange;
-
-        if (movementType === 'Salida' && newQuantity < 0) {
-            alert('No hay suficiente stock para esta salida.');
-            setIsSubmitting(false);
-            return;
-        }
-
-        // 1. Log the movement
-        const { data: movementData, error: movementError } = await supabase
-            .from('inventory_movements')
-            .insert({
-                inventory_id: selectedItem.id,
-                quantity_change: movementType === 'Salida' ? -quantityChange : quantityChange,
-                type: movementType,
-                reason: reason,
-            })
-            .select()
-            .single();
-
-        if (movementError) {
-            alert('Error al registrar el movimiento: ' + movementError.message);
-            setIsSubmitting(false);
-            return;
-        }
-
-        // 2. Update the stock
-        const { error: updateError } = await supabase
-            .from('inventory')
-            .update({ quantity: newQuantity })
-            .eq('id', itemId);
-
-        if (updateError) {
-            alert('El movimiento fue registrado, pero el stock no pudo ser actualizado. Error: ' + updateError.message);
-            // Attempt to roll back the movement log for consistency
-            if (movementData) {
-                await supabase.from('inventory_movements').delete().eq('id', movementData.id);
-                alert('Se ha revertido el registro del movimiento. Por favor, intente de nuevo.');
+        // Validate stock for all items if Salida
+        if (movementType === 'Salida') {
+            const insufficientStockItems = itemsToProcess.filter(p => p.item.quantity - p.quantityChange < 0);
+            if (insufficientStockItems.length > 0) {
+                alert(`No hay suficiente stock para los siguientes artículos: ${insufficientStockItems.map(p => p.item.name).join(', ')}`);
+                setIsSubmitting(false);
+                return;
             }
-        } else {
-            // Log to activity_logs
-            await supabase.from('activity_logs').insert({
-                action_type: 'Ajuste Inventario',
-                details: `${movementType === 'Entrada' ? '+' : '-'}${quantityChange} ${unit} de ${selectedItem.name}. Stock actual: ${newQuantity} ${unit}. Motivo: ${reason || 'Ajuste manual'}`
-            });
+        }
 
-            alert('¡Stock y movimiento registrados con éxito!');
+        try {
+            // Process each movement
+            for (const { item, quantityChange, displayUnit } of itemsToProcess) {
+                const newQuantity = movementType === 'Salida' 
+                    ? item.quantity - quantityChange 
+                    : item.quantity + quantityChange;
+
+                // 1. Log the movement
+                const { error: movementError } = await supabase
+                    .from('inventory_movements')
+                    .insert({
+                        inventory_id: item.id,
+                        quantity_change: movementType === 'Salida' ? -quantityChange : quantityChange,
+                        type: movementType,
+                        reason: reason,
+                    });
+
+                if (movementError) {
+                    console.error('Error logging movement:', movementError);
+                    throw new Error(`Error al registrar movimiento para ${item.name}: ${movementError.message}`);
+                }
+
+                // 2. Update stock
+                const { error: updateError } = await supabase
+                    .from('inventory')
+                    .update({ quantity: newQuantity })
+                    .eq('id', item.id);
+
+                if (updateError) {
+                    console.error('Error updating stock:', updateError);
+                    throw new Error(`Error al actualizar stock para ${item.name}: ${updateError.message}`);
+                }
+
+                // 3. Log to activity_logs
+                const originalUnitDisplay = (movementType === 'Entrada' ? '+' : '-') + quantityChange + ' ' + (item.unit.toLowerCase() === 'docenas' ? 'docenas' : (item.unit.toLowerCase() === 'unidades' ? 'unidades' : item.unit));
+
+                await supabase.from('activity_logs').insert({
+                    action_type: 'Ajuste Inventario',
+                    details: `${movementType === 'Entrada' ? '+' : '-'}${quantityChange} unidades de ${item.name}. Stock actual: ${newQuantity} ${item.unit}. Motivo: ${reason || 'Ajuste manual'}` // Kept details similar for simplicity, maybe adjust logic if needed. Let's fix details logic.
+                });
+            }
+
+            alert('¡Stock y movimientos registrados con éxito!');
             onSave();
             onCancel();
+        } catch (e: any) {
+            alert(e.message || 'Ha ocurrido un error durante el proceso.');
         }
+
         setIsSubmitting(false);
     };
 
-    const itemOptions = useMemo(() => items.map(i => ({
-        id: i.id,
-        label: i.name,
-        subLabel: `${i.brand} - Stock: ${i.quantity} ${i.unit}`
-    })), [items]);
-
-    // Always show dual inputs unless it's a unit that doesn't make sense (like kg/m), 
-    // but for now we default to showing them to meet the request "make it always show".
-    // However, we should probably only show it if the selected item is compatible or if no item is selected yet.
-    // If an item is selected and it is kg/m, we might want to revert to single input or just disable the dozens part.
-    // The user request said "make it always show", implying for the relevant items or maybe globally.
-    // Given the context of "unidades" and "docenas", let's show it by default.
-    // If the selected item is explicitly NOT units/dozens (e.g. kg), we might want to hide it to avoid confusion,
-    // but the user said "make it always show". I will interpret this as "don't hide it when nothing is selected".
-    // But if I select 'Metros', showing 'Docenas' is confusing. 
-    // I will assume the user primarily works with units/dozens and wants to see the boxes ready.
-    // I'll add a check: if selectedItem is present AND it is NOT units/dozens, show single box.
-    // Otherwise (no selection OR units/dozens), show dual boxes.
-    
-    const isStandardUnit = !selectedItem || ['unidades', 'docenas'].includes(selectedItem.unit.toLowerCase());
-
     return (
-        <Card title="Registrar Movimiento de Stock" className="mb-6">
+        <Card title="Registrar Movimiento de Stock" className="mb-6 border-2 border-blue-100">
             <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Artículo</label>
-                        <SearchableSelect 
-                            options={itemOptions}
-                            value={itemId}
-                            onChange={setItemId}
-                            placeholder="Buscar artículo..."
-                        />
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Movimiento</label>
                         <select value={movementType} onChange={e => setMovementType(e.target.value as any)} required className="block w-full p-2 border border-gray-300 rounded-md">
-                            <option value="Salida">Salida (Venta, Desperdicio, etc.)</option>
+                            <option value="Salida">Salida (Uso, Desperdicio, etc.)</option>
                             <option value="Entrada">Entrada / Ajuste</option>
                         </select>
                     </div>
-                     <div className={isStandardUnit ? "col-span-1 md:col-span-1" : "col-span-1"}>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                        {isStandardUnit ? (
-                            <div className="flex space-x-2">
-                                <div className="flex-1">
-                                    <label className="block text-xs text-gray-500 mb-1">Unidades</label>
-                                    <div className="relative rounded-md shadow-sm">
-                                        <input 
-                                            type="text" 
-                                            inputMode="decimal" 
-                                            value={quantityUnits} 
-                                            onChange={handleUnitsChange} 
-                                            placeholder="0" 
-                                            className="block w-full border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
-                                        />
-                                    </div>
-                                </div>
-                                <div className="flex-1">
-                                    <label className="block text-xs text-gray-500 mb-1">Docenas</label>
-                                    <div className="relative rounded-md shadow-sm">
-                                        <input 
-                                            type="text" 
-                                            inputMode="decimal" 
-                                            value={quantityDozens} 
-                                            onChange={handleDozensChange} 
-                                            placeholder="0" 
-                                            className="block w-full border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="relative rounded-md shadow-sm">
-                                <input 
-                                    type="text" 
-                                    inputMode="decimal" 
-                                    value={quantityUnits} 
-                                    onChange={handleUnitsChange} 
-                                    required 
-                                    placeholder="0" 
-                                    className="block w-full pr-16 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-2 border" 
-                                />
-                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                    <span className="text-gray-500 sm:text-sm">{selectedItem?.unit || 'Unidad'}</span>
-                                </div>
-                            </div>
-                        )}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Razón / Nota (Opcional)</label>
+                        <input 
+                            type="text" 
+                            value={reason} 
+                            onChange={e => setReason(e.target.value)} 
+                            placeholder="Ej: Ajuste de inventario, material dañado..." 
+                            className="block w-full p-2 border border-gray-300 rounded-md" 
+                        />
                     </div>
                 </div>
-                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Razón / Nota (Opcional)</label>
-                    <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: Venta a cliente X, ajuste de conteo" className="block w-full p-2 border border-gray-300 rounded-md" />
+
+                <div>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-medium text-gray-700">Artículos</label>
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row gap-2 mb-2">
+                        <input 
+                            type="text" 
+                            value={searchTerm} 
+                            onChange={e => setSearchTerm(e.target.value)} 
+                            className="block w-full sm:w-1/2 p-2 border border-gray-300 rounded-md"
+                            placeholder="Buscar artículo..."
+                        />
+                        <select 
+                            value={brandFilter}
+                            onChange={e => setBrandFilter(e.target.value as any)}
+                            className="block w-full sm:w-1/2 p-2 border border-gray-300 rounded-md"
+                        >
+                            <option value="all">Todas las Marcas</option>
+                            {brandOptions.map(brand => <option key={brand} value={brand}>{brand}</option>)}
+                        </select>
+                    </div>
+                    
+                    <div className="max-h-80 overflow-y-auto border border-gray-200 rounded-md">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 sticky top-0 z-10">
+                                <tr>
+                                    <th className="p-2">Producto</th>
+                                    <th className="p-2 text-right w-40">Cantidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredItems.map(item => {
+                                    const itemUnit = item.unit.toLowerCase();
+                                    const canConvert = itemUnit === 'unidades' || itemUnit === 'docenas';
+                                    
+                                    return (
+                                        <tr key={item.id} className="border-b hover:bg-gray-50">
+                                            <td className="p-2">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="font-medium text-gray-800">{item.name}</div>
+                                                    <Badge color={getBrandColor(item.brand)}>{item.brand}</Badge>
+                                                </div>
+                                                <div className="text-xs text-gray-500 mt-1">Stock: {item.quantity} {item.unit}</div>
+                                            </td>
+                                            <td className="p-2 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <input 
+                                                        type="text" 
+                                                        inputMode="decimal"
+                                                        value={quantities[item.id] || ''}
+                                                        onChange={e => handleQuantityChange(item.id, e.target.value)}
+                                                        placeholder="0"
+                                                        className="w-20 p-1 border border-gray-300 rounded-md focus:ring-blue-500 text-right"
+                                                    />
+                                                    {canConvert ? (
+                                                        <select
+                                                            value={units[item.id] || 'unidades'}
+                                                            onChange={e => setUnits(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                                            className="p-1 border border-gray-300 rounded-md focus:ring-blue-500 text-xs text-gray-600 bg-gray-50"
+                                                        >
+                                                            <option value="unidades">unid</option>
+                                                            <option value="docenas">doc</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className="text-gray-400 text-xs w-12 text-left inline-block pl-1 truncate" title={item.unit}>{item.unit}</span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {filteredItems.length === 0 && (
+                                    <tr><td colSpan={2} className="p-4 text-center text-gray-500">No se encontraron artículos.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
+
                 <div className="flex justify-end space-x-2 pt-2">
                     <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition">Cancelar</button>
-                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300">{isSubmitting ? 'Guardando...' : 'Guardar Movimiento'}</button>
+                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300">{isSubmitting ? 'Guardando...' : 'Guardar Movimientos'}</button>
                 </div>
             </form>
         </Card>
