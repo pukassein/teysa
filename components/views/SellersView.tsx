@@ -806,7 +806,6 @@ const SellersView: React.FC = () => {
                                 <p className="text-center py-8 text-gray-500">Cargando inventario...</p>
                             ) : (
                                 <SellerInventoryTable inventory={sellerInventory
-                                    .filter(item => item.quantity > 0)
                                     .sort((a, b) => {
                                         const nameA = a.inventory_item?.name || '';
                                         const nameB = b.inventory_item?.name || '';
