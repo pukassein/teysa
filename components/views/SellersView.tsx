@@ -307,8 +307,10 @@ const MovementForm: React.FC<{
                     parsedQty = parsedQty / 12;
                 }
                 
+                // Fix floating point precision issues (e.g. 89.04 / 12 = 7.420000000000001)
+                parsedQty = Math.round(parsedQty * 1000000) / 1000000;
 
-                return { inventory_id: Number(id), quantity: parsedQty };
+                return { inventory_id: Number(id), quantity: Math.abs(parsedQty) };
             })
             .filter(item => item.quantity > 0);
 
@@ -603,13 +605,13 @@ const SellersView: React.FC = () => {
             for (const movementItem of items) {
                 if (activeAction === 'Carga') {
                     const item = centralInventory.find(i => i.id === movementItem.inventory_id);
-                    if (!item || item.quantity < movementItem.quantity) {
+                    if (!item || item.quantity + 0.0001 < movementItem.quantity) {
                         alert(`No hay suficiente stock en el inventario central para ${item?.name || 'un artículo'}.`);
                         return;
                     }
                 } else {
                     const item = sellerInventory.find(i => i.inventory_id === movementItem.inventory_id);
-                    if (!item || item.quantity < movementItem.quantity) {
+                    if (!item || item.quantity + 0.0001 < movementItem.quantity) {
                         alert(`El vendedor no tiene suficiente stock para ${item?.inventory_item?.name || 'un artículo'}.`);
                         return;
                     }
@@ -671,13 +673,13 @@ const SellersView: React.FC = () => {
             // 1. Validate Stock
             if (movement.type === 'Carga') {
                 const item = sellerInventory.find(i => i.inventory_id === movement.inventory_id);
-                if (!item || item.quantity < movement.quantity) {
+                if (!item || item.quantity + 0.0001 < movement.quantity) {
                     alert('El vendedor ya no tiene suficiente stock para deshacer esta carga.');
                     return;
                 }
             } else if (movement.type === 'Devolución') {
                 const item = centralInventory.find(i => i.id === movement.inventory_id);
-                if (!item || item.quantity < movement.quantity) {
+                if (!item || item.quantity + 0.0001 < movement.quantity) {
                     alert('No hay suficiente stock en el inventario central para deshacer esta devolución.');
                     return;
                 }
