@@ -254,14 +254,12 @@ const MovementForm: React.FC<{
     const [date, setDate] = useState<string>(getLocalDatetimeStr());
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [brandFilter, setBrandFilter] = useState<string>('Todos');
 
     const availableItems = useMemo(() => {
         let items = [];
         if (type === 'Carga') {
-            items = inventoryItems.filter(i => {
-                const brand = (i.brand || '').toLowerCase();
-                return i.quantity > 0 && (brand.includes('avanti') || brand.includes('duramaxi'));
-            });
+            items = inventoryItems.filter(i => i.quantity > 0);
         } else {
             items = sellerInventory
                 .filter(si => si.inventory_item && si.quantity > 0)
@@ -274,9 +272,15 @@ const MovementForm: React.FC<{
     }, [type, inventoryItems, sellerInventory]);
 
     const filteredItems = useMemo(() => {
-        if (!searchTerm) return availableItems;
-        return availableItems.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [availableItems, searchTerm]);
+        let result = availableItems;
+        if (brandFilter !== 'Todos') {
+            result = result.filter(i => (i.brand || '').toLowerCase() === brandFilter.toLowerCase());
+        }
+        if (searchTerm) {
+            result = result.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        }
+        return result;
+    }, [availableItems, searchTerm, brandFilter]);
 
     const handleQuantityChange = (id: number, val: string, unit: string) => {
         val = val.replace(',', '.');
@@ -387,9 +391,27 @@ const MovementForm: React.FC<{
                             }}
                             className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                         >
-                            Seleccionar todo el stock
+                            Seleccionar todo el stock visible
                         </button>
                     </div>
+
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        {['Todos', 'Duramaxi', 'Avanty', 'Generica', 'Base Base'].map(b => (
+                            <button
+                                key={b}
+                                type="button"
+                                onClick={() => setBrandFilter(b)}
+                                className={`px-3 py-1 text-xs rounded-full border transition ${
+                                    brandFilter === b 
+                                        ? 'bg-blue-600 text-white border-blue-600' 
+                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                                }`}
+                            >
+                                {b}
+                            </button>
+                        ))}
+                    </div>
+
                     <input 
                         type="text" 
                         value={searchTerm} 
