@@ -81,10 +81,10 @@ const SellerInventoryTable: React.FC<{
                         let quantityInDozens: string | number = '-';
 
                         if (unitLower === 'unidades') {
-                            displayQuantity = Math.ceil(Number(item.quantity));
+                            displayQuantity = Math.round(Number(item.quantity));
                             quantityInDozens = (displayQuantity / 12).toFixed(2);
                         } else if (unitLower === 'docenas') {
-                            displayQuantity = Math.ceil(Number(item.quantity) * 12);
+                            displayQuantity = Math.round(Number(item.quantity) * 12);
                             quantityInDozens = (displayQuantity / 12).toFixed(2);
                         }
 
@@ -178,10 +178,10 @@ const MovementHistoryTable: React.FC<{
                             let quantityInDozens: string | number = '-';
 
                             if (unitLower === 'unidades') {
-                                displayQuantity = Math.ceil(Number(mov.quantity));
+                                displayQuantity = Math.round(Number(mov.quantity));
                                 quantityInDozens = (displayQuantity / 12).toFixed(2);
                             } else if (unitLower === 'docenas') {
-                                displayQuantity = Math.ceil(Number(mov.quantity) * 12);
+                                displayQuantity = Math.round(Number(mov.quantity) * 12);
                                 quantityInDozens = (displayQuantity / 12).toFixed(2);
                             }
 
@@ -296,7 +296,7 @@ const MovementForm: React.FC<{
                 let parsedQty = parseFloat(qtyStr || '0');
                 
                 const isConvertible = item.unit.toLowerCase() === 'unidades' || item.unit.toLowerCase() === 'docenas';
-                const defaultUnit = (type === 'Venta' && isConvertible) ? 'unidades' : item.unit.toLowerCase();
+                const defaultUnit = isConvertible ? 'unidades' : item.unit.toLowerCase();
                 
                 const selectedUnit = units[Number(id)]?.toLowerCase() || defaultUnit;
                 const baseUnit = item.unit.toLowerCase();
@@ -307,8 +307,6 @@ const MovementForm: React.FC<{
                     parsedQty = parsedQty / 12;
                 }
                 
-                // Redondear decimales
-                parsedQty = Math.round(parsedQty * 100) / 100;
 
                 return { inventory_id: Number(id), quantity: parsedQty };
             })
@@ -427,7 +425,7 @@ const MovementForm: React.FC<{
                                                                 const checked = e.target.checked;
                                                                 setSelectedAll(prev => ({ ...prev, [item.id]: checked }));
                                                                 if (checked) {
-                                                                    const targetUnit = (type === 'Venta' && canConvert) ? 'unidades' : item.unit;
+                                                                    const targetUnit = canConvert ? 'unidades' : item.unit;
                                                                     setUnits(prev => ({ ...prev, [item.id]: targetUnit }));
                                                                     
                                                                     let qty = Number(item.quantity);
@@ -458,7 +456,7 @@ const MovementForm: React.FC<{
                                                     />
                                                     {canConvert ? (
                                                         <select
-                                                            value={units[item.id] || (type === 'Venta' ? 'unidades' : item.unit)}
+                                                            value={units[item.id] || (canConvert ? 'unidades' : item.unit)}
                                                             onChange={e => {
                                                                 setUnits(prev => ({ ...prev, [item.id]: e.target.value }));
                                                                 setSelectedAll(prev => ({ ...prev, [item.id]: false }));

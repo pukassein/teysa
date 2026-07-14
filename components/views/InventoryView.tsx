@@ -435,11 +435,11 @@ const InventoryRow: React.FC<{ item: InventoryItem; onEdit: (item: InventoryItem
     let quantityInDozens = '-';
 
     if (unitLower === 'unidades') {
-        displayQuantity = Math.ceil(item.quantity);
+        displayQuantity = Math.round(item.quantity);
         quantityInDozens = (displayQuantity / 12).toFixed(2);
     } else if (unitLower === 'docenas') {
         // Convert base dozens to units for display in first column
-        displayQuantity = Math.ceil(item.quantity * 12);
+        displayQuantity = Math.round(item.quantity * 12);
         displayUnit = 'unidades'; 
         quantityInDozens = (displayQuantity / 12).toFixed(2);
     }
@@ -776,10 +776,10 @@ const InventoryView: React.FC = () => {
             let quantityInDozens = '-';
 
             if (unitLower === 'unidades') {
-                displayQuantity = Math.ceil(item.quantity);
+                displayQuantity = Math.round(item.quantity);
                 quantityInDozens = (displayQuantity / 12).toFixed(2);
             } else if (unitLower === 'docenas') {
-                displayQuantity = Math.ceil(item.quantity * 12);
+                displayQuantity = Math.round(item.quantity * 12);
                 displayUnit = 'unidades'; 
                 quantityInDozens = (displayQuantity / 12).toFixed(2);
             }
