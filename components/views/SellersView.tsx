@@ -692,16 +692,19 @@ const SellersView: React.FC = () => {
         if (!window.confirm('¿Estás seguro de deshacer este movimiento? Se revertirán los cambios de stock.')) return;
 
         try {
+            const movQuantity = Number(movement.quantity);
+            const { data: centralData } = await supabase.from('inventory').select('*').eq('id', movement.inventory_id).single();
+            const centralItem = centralData;
+
             // 1. Validate Stock
             if (movement.type === 'Carga') {
                 const item = sellerInventory.find(i => i.inventory_id === movement.inventory_id);
-                if (!item || item.quantity + 0.0001 < movement.quantity) {
+                if (!item || Number(item.quantity) + 0.0001 < movQuantity) {
                     alert('El vendedor ya no tiene suficiente stock para deshacer esta carga.');
                     return;
                 }
             } else if (movement.type === 'Devolución') {
-                const item = centralInventory.find(i => i.id === movement.inventory_id);
-                if (!item || item.quantity + 0.0001 < movement.quantity) {
+                if (!centralItem || Number(centralItem.quantity) + 0.0001 < movQuantity) {
                     alert('No hay suficiente stock en el inventario central para deshacer esta devolución.');
                     return;
                 }
@@ -710,17 +713,20 @@ const SellersView: React.FC = () => {
             // 2. Perform Revert Updates
             if (movement.type === 'Carga') {
                 // Decrease Seller
-                const sellerItem = sellerInventory.find(i => i.inventory_id === movement.inventory_id)!;
-                await supabase.from('seller_inventory').update({ quantity: sellerItem.quantity - movement.quantity }).eq('id', sellerItem.id);
+                const sellerItem = sellerInventory.find(i => i.inventory_id === movement.inventory_id);
+                if (sellerItem) {
+                    await supabase.from('seller_inventory').update({ quantity: Number(sellerItem.quantity) - movQuantity }).eq('id', sellerItem.id);
+                }
                 
                 // Increase Central
-                const centralItem = centralInventory.find(i => i.id === movement.inventory_id)!;
-                await supabase.from('inventory').update({ quantity: centralItem.quantity + movement.quantity }).eq('id', centralItem.id);
+                if (centralItem) {
+                    await supabase.from('inventory').update({ quantity: Number(centralItem.quantity) + movQuantity }).eq('id', centralItem.id);
+                }
                 
                 // Log Central Movement
                 await supabase.from('inventory_movements').insert({
                     inventory_id: movement.inventory_id,
-                    quantity_change: movement.quantity,
+                    quantity_change: movQuantity,
                     type: 'Entrada',
                     reason: `Deshacer Carga a Vendedor: ${selectedSeller?.name}`
                 });
@@ -728,27 +734,28 @@ const SellersView: React.FC = () => {
                 // Increase Seller
                 const sellerItem = sellerInventory.find(i => i.inventory_id === movement.inventory_id);
                 if (sellerItem) {
-                    await supabase.from('seller_inventory').update({ quantity: sellerItem.quantity + movement.quantity }).eq('id', sellerItem.id);
+                    await supabase.from('seller_inventory').update({ quantity: Number(sellerItem.quantity) + movQuantity }).eq('id', sellerItem.id);
                 } else {
-                    await supabase.from('seller_inventory').insert({ seller_id: movement.seller_id, inventory_id: movement.inventory_id, quantity: movement.quantity });
+                    await supabase.from('seller_inventory').insert({ seller_id: movement.seller_id, inventory_id: movement.inventory_id, quantity: movQuantity });
                 }
             } else if (movement.type === 'Devolución') {
                 // Decrease Central
-                const centralItem = centralInventory.find(i => i.id === movement.inventory_id)!;
-                await supabase.from('inventory').update({ quantity: centralItem.quantity - movement.quantity }).eq('id', centralItem.id);
+                if (centralItem) {
+                    await supabase.from('inventory').update({ quantity: Number(centralItem.quantity) - movQuantity }).eq('id', centralItem.id);
+                }
                 
                 // Increase Seller
                 const sellerItem = sellerInventory.find(i => i.inventory_id === movement.inventory_id);
                 if (sellerItem) {
-                    await supabase.from('seller_inventory').update({ quantity: sellerItem.quantity + movement.quantity }).eq('id', sellerItem.id);
+                    await supabase.from('seller_inventory').update({ quantity: Number(sellerItem.quantity) + movQuantity }).eq('id', sellerItem.id);
                 } else {
-                    await supabase.from('seller_inventory').insert({ seller_id: movement.seller_id, inventory_id: movement.inventory_id, quantity: movement.quantity });
+                    await supabase.from('seller_inventory').insert({ seller_id: movement.seller_id, inventory_id: movement.inventory_id, quantity: movQuantity });
                 }
                 
                 // Log Central Movement
                 await supabase.from('inventory_movements').insert({
                     inventory_id: movement.inventory_id,
-                    quantity_change: -movement.quantity,
+                    quantity_change: -movQuantity,
                     type: 'Salida',
                     reason: `Deshacer Devolución de Vendedor: ${selectedSeller?.name}`
                 });
